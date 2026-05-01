@@ -23,13 +23,17 @@ COLOR_MAP = {"Costicine": "#FF0000", "Salsicce": "#00BFFF", "Braciole": "#000000
 
 def load_data(url):
     try:
-        df = pd.read_csv(f"{url}&nocache={time.time()}")
-        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-        df.columns = [str(c).strip() for c in df.columns]
-        # Pulizia universale di tutti i testi nel dataframe
-        df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
-        return df
-    except: return pd.DataFrame()
+        response = requests.get(f"{url}&nocache={time.time()}")
+        if response.status_code == 200:
+            import io
+            df = pd.read_csv(io.StringIO(response.text))
+            df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+            df.columns = [str(c).strip() for c in df.columns]
+            # Pulizia aggressiva: togliamo spazi ovunque
+            df = df.map(lambda x: str(x).strip() if pd.notnull(x) else x)
+            return df
+    except: pass
+    return pd.DataFrame()
 
 def save_data(sheet, data):
     try:
@@ -55,19 +59,17 @@ with tab1:
     if not df_p.empty and len(df_p.columns) >= 2:
         df_p.columns = ['Nome', 'Turno'] + list(df_p.columns[2:])
         miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist()
-    else: miei_turni = []
+        
+        turni_lista = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
+        
+        cols = st.columns(3)
+        for i, t in enumerate(turni_lista):
+            with cols[i%3]:
+                if st.toggle(t, value=(t in miei_turni), key=f"t_{user}_{i}"):
+                    if t not in miei_turni:
+                        if save_data("Presenze", [user, t]): st.rerun()
 
-    turni_lista = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
-    
-    cols = st.columns(3)
-    for i, t in enumerate(turni_lista):
-        with cols[i%3]:
-            if st.toggle(t, value=(t in miei_turni), key=f"t_{user}_{i}"):
-                if t not in miei_turni:
-                    if save_data("Presenze", [user, t]): st.rerun()
-
-    st.divider()
-    if not df_p.empty:
+        st.divider()
         st.subheader("📊 Stato Copertura")
         df_count = df_p.drop_duplicates().copy()
         cp = st.columns(3)
@@ -81,9 +83,9 @@ with tab1:
                                   annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 2: CARNE (FIX GIORNALIERI) ---
+# --- TAB 2: CARNE (DEBUG MODE) ---
 with tab2:
-    st.header("🍖 Produzione Carne")
+    st.header("🍖 Monitoraggio Produzione")
     
     with st.expander("➕ Inserisci Quantità"):
         with st.form("carne_form"):
@@ -97,51 +99,44 @@ with tab2:
 
     df_q = load_data(URL_MAGAZZINO)
     
-    if not df_q.empty and len(df_q.columns) >= 3:
-        # Pulizia colonne e forzatura tipi
-        df_q = df_q.iloc[:, :4] 
+    if not df_q.empty:
+        # Forziamo i nomi delle colonne per sicurezza
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
 
-        # 1. GRAFICI GIORNALIERI (IN ALTO)
-        st.subheader("📅 Dettaglio Produzione Giornaliera")
+        # --- SEZIONE GRAFICI ---
+        st.subheader("📅 Dettaglio Giornaliero")
         
-        # Troviamo i giorni nel foglio ignorando spazi bianchi
-        giorni_reali = df_q['Giorno'].unique().tolist()
-        
-        for g in DATE_SOGLIA:
-            # Controllo flessibile della data
-            if g in giorni_reali:
-                df_g = df_q[df_q['Giorno'] == g].copy()
-                df_g_plot = df_g.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+        # Logica di visualizzazione: Se una data in DATE_SOGLIA esiste nel foglio, mostra grafico
+        for data_target in DATE_SOGLIA:
+            # Filtro "pulito"
+            df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
+            
+            if not df_giorno.empty:
+                df_plot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
                 
-                if df_g_plot['Quantita'].sum() > 0:
-                    fig = px.bar(df_g_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
-                                 title=f"Giorno: {g}", color_discrete_map=COLOR_MAP, 
-                                 category_orders={"Prodotto": PRODOTTI_ORDINE})
-                    fig.update_layout(showlegend=False, height=250)
+                if df_plot['Quantita'].sum() > 0:
+                    fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', 
+                                 text_auto=True, title=f"Produzione del {data_target}",
+                                 color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
+                    fig.update_layout(showlegend=False, height=300)
                     st.plotly_chart(fig, use_container_width=True)
 
-        # 2. GRAFICO TOTALE (IN BASSO)
+        # --- TOTALE ---
         st.divider()
-        st.subheader("📊 Totale Sagra (Kg)")
+        st.subheader("📊 Totale Complessivo (Kg)")
         df_tot = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
         fig_tot = px.bar(df_tot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
                          color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
-        fig_tot.update_layout(showlegend=False)
         st.plotly_chart(fig_tot, use_container_width=True)
 
-        # 3. ELIMINA
+        # --- ELIMINA ---
         st.divider()
-        with st.expander("🗑️ Cancella Errori"):
+        with st.expander("🗑️ Cancella Inserimenti"):
             for i, row in df_q.tail(10).iloc[::-1].iterrows():
-                c1, c2, c3 = st.columns([5, 3, 2])
-                c1.write(f"{row['Giorno']} - {row['Prodotto']}")
-                c2.write(f"{int(row['Quantita'])}kg")
-                if c3.button("Elimina", key=f"del_{i}"):
+                st.write(f"{row['Giorno']} - {row['Prodotto']} ({row['Quantita']}kg) [Riga {i+1}]")
+                if st.button("Elimina", key=f"del_{i}"):
                     if delete_row("Quantità Grigliate", i + 1): st.rerun()
-    else:
-        st.info("Nessun dato carne rilevato. Inserisci una grigliata!")
 
 with tab3:
-    st.link_button("📂 Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
+    st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
