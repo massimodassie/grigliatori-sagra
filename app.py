@@ -55,7 +55,23 @@ tab1, tab2, tab3 = st.tabs(["👥 I Miei Turni", "🍖 Quantità Carne", "⚙️
 
 # --- TAB 1: TURNI ---
 with tab1:
-    user = st.selectbox("Chi sei?", sorted(["Botteon Marco", "Da Ronch Loris", "Denis Boscaratto", "Flavio", "Francesco Perencin", "Francesco Vicenza", "Giacomo", "Gianluca Sossai", "Massimo Dassie", "Mauro Micieli", "Mirko Modolo Zanchetta", "Radu Apostol", "Riccardo Rossi"]))
+    # LISTA ORDINATA ALFABETICAMENTE
+    grigliatori = [
+        "Boscaratto Denis",
+        "Botteon Marco",
+        "Da Ronch Loris",
+        "Dassie Massimo",
+        "Disconzi Francesco",
+        "Flavio",
+        "Giacomo",
+        "Micieli Mauro",
+        "Modolo Zanchetta Mirko",
+        "Perencin Francesco",
+        "Rossi Riccardo",
+        "Sossai Gianluca"
+    ]
+    
+    user = st.selectbox("Chi sei?", grigliatori)
     
     st.subheader("Segna la tua presenza")
     df_p = load_data(URL_PRESENZE)
@@ -103,12 +119,9 @@ with tab2:
     
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
-        # RINOMINIAMO LE COLONNE PER SICUREZZA (Giorno, Prodotto, Quantita)
-        # Se nel foglio sono diverse, le forziamo in base alla posizione
         if len(df_q.columns) >= 3:
             df_q.columns = ['Giorno', 'Prodotto', 'Quantita'] + list(df_q.columns[3:])
         
-        # Pulizia dati
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
         
         # 1. GRAFICO TOTALI
