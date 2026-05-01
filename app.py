@@ -11,8 +11,8 @@ from datetime import datetime
 # --- 1. CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
 
-# Assicurati che SCRIPT_URL sia l'ultimo deployment dello script Google Apps
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlzO8HR87qEHeM5L6kDLWwctu_AehDK8yZZhhCh_bNLiLmPk3GTTJXKRHGeM0XBtxA/exec"
+# URL dello script che mi hai fornito
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZ6rlwkixXk4d1JF5QLfsFGK_eeYtbyxoDRf7OmDg3Qffl6h6-XItgRoI5Cp6HMAUU/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
@@ -31,7 +31,7 @@ def load_data(url):
             df = pd.read_csv(io.StringIO(response.text))
             df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
             df.columns = [str(c).strip() for c in df.columns]
-            # Pulizia aggressiva degli spazi
+            # Pulizia aggressiva degli spazi e conversione in stringa per i confronti
             df = df.map(lambda x: str(x).strip() if pd.notnull(x) else x)
             return df
     except: pass
@@ -45,10 +45,10 @@ def save_data(sheet, data):
 
 def delete_row(sheet, row_index):
     try:
-        # row_index 0 del dataframe è la riga 2 del foglio (riga 1 = intestazione)
-        google_row = row_index + 2
+        # Calcolo riga: indice DF 0 è riga 2 del foglio (riga 1 è intestazione)
+        google_row = int(row_index) + 2
         url = f"{SCRIPT_URL}?sheet={urllib.parse.quote(sheet)}&deleteRow={google_row}"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         return response.status_code == 200
     except: return False
 
@@ -71,8 +71,9 @@ with tab1:
         cols = st.columns(3)
         for i, t in enumerate(turni_lista):
             with cols[i%3]:
-                if st.toggle(t, value=(t in miei_turni), key=f"t_{user}_{i}"):
-                    if t not in miei_turni:
+                is_on = (t in miei_turni)
+                if st.toggle(t, value=is_on, key=f"t_{user}_{i}"):
+                    if not is_on:
                         if save_data("Presenze", [user, t]): st.rerun()
 
         st.divider()
@@ -93,7 +94,7 @@ with tab1:
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     
-    with st.expander("➕ Inserisci Nuova Quantità"):
+    with st.expander("➕ Inserisci Nuova Quantità", expanded=False):
         with st.form("carne_form"):
             c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
             f_data = c1.selectbox("Giorno", DATE_SOGLIA)
@@ -101,18 +102,22 @@ with tab2:
             f_qta = c3.number_input("Kg", min_value=1)
             f_ora = c4.text_input("Ora", value=datetime.now().strftime("%H:%M"))
             if st.form_submit_button("Salva 📝"):
-                if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]): st.rerun()
+                if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]): 
+                    st.success("Dato salvato!")
+                    time.sleep(1)
+                    st.rerun()
 
     df_q = load_data(URL_MAGAZZINO)
     
     if not df_q.empty:
+        # Assicuriamo i nomi delle colonne
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
 
         # 1. Grafici Giornalieri
         st.subheader("📅 Dettaglio Giornaliero")
         for data_target in DATE_SOGLIA:
-            # Filtro flessibile "Contains"
+            # Filtro "contains" per bypassare errori di spazi
             df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
             if not df_giorno.empty:
                 df_plot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
@@ -134,18 +139,19 @@ with tab2:
         # 3. Sezione Eliminazione
         st.divider()
         with st.expander("🗑️ Cancella Inserimenti"):
-            # Ricarichiamo gli ultimi dati
+            # Mostriamo gli ultimi 10 inserimenti per riga
             last_entries = df_q.tail(10).iloc[::-1]
             for i, row in last_entries.iterrows():
                 c_info, c_btn = st.columns([8, 2])
                 c_info.write(f"**{row['Giorno']}** - {row['Prodotto']} ({int(row['Quantita'])}kg)")
                 if c_btn.button("Elimina", key=f"del_{i}"):
-                    if delete_row("Quantità Grigliate", i):
-                        st.success("Eliminato!")
-                        time.sleep(1)
-                        st.rerun()
+                    with st.spinner("Eliminazione..."):
+                        if delete_row("Quantità Grigliate", i):
+                            st.success("Riga eliminata!")
+                            time.sleep(1.5) # Tempo per Google di aggiornare
+                            st.rerun()
     else:
-        st.info("Nessun dato carne rilevato.")
+        st.info("In attesa di dati dal magazzino...")
 
 with tab3:
     st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
