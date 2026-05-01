@@ -13,7 +13,6 @@ st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wid
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlzO8HR87qEHeM5L6kDLWwctu_AehDK8yZZhhCh_bNLiLmPk3GTTJXKRHGeM0XBtxA/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
-# Encoding per i nomi dei fogli
 foglio_q = urllib.parse.quote("Quantità Grigliate")
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
 URL_MAGAZZINO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={foglio_q}"
@@ -35,7 +34,10 @@ TURNI = [
 # --- FUNZIONI ---
 def load_data(url):
     try:
-        return pd.read_csv(f"{url}&nocache={time.time()}")
+        df = pd.read_csv(f"{url}&nocache={time.time()}")
+        # PULIZIA COLONNE: togliamo spazi e rendiamo tutto standard
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
     except:
         return pd.DataFrame()
 
@@ -70,11 +72,11 @@ with tab1:
     st.divider()
     st.subheader("Stato attuale copertura (Obiettivo 5-6 persone)")
     if not df_p.empty:
-        df_clean = df_p.drop_duplicates(subset=['Nome', 'Turno'], keep='last')
+        df_p_clean = df_p.drop_duplicates(subset=['Nome', 'Turno'], keep='last')
         cols_pie = st.columns(3)
         for i, t in enumerate(TURNI):
             with cols_pie[i%3]:
-                count = len(df_clean[df_clean['Turno'] == t])
+                count = len(df_p_clean[df_p_clean['Turno'] == t])
                 target = 5 if "Pranzo" in t else 6
                 fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, 
                                         marker_colors=["#2a9d8f", "#eeeeee"], showlegend=False))
@@ -82,7 +84,7 @@ with tab1:
                                   annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True, key=f"p_chart_{i}")
 
-# --- TAB 2: CARNE (CON DETTAGLIO PER DATA) ---
+# --- TAB 2: CARNE (ROBUSTA) ---
 with tab2:
     st.header("🍖 Registrazione Produzione")
     
@@ -91,7 +93,6 @@ with tab2:
         f_data = c1.selectbox("Giorno", DATE_SOGLIA)
         f_tipo = c2.selectbox("Cibo", ["Costicine", "Salsicce", "Braciole"])
         f_qta = c3.number_input("Quantità (kg)", min_value=1, step=1)
-        
         if st.form_submit_button("Invia Dati 📝"):
             if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta]):
                 st.success(f"Registrati {f_qta}kg!")
@@ -102,45 +103,40 @@ with tab2:
     
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
-        # Pulizia solita per l'accento
-        df_q.columns = [c.replace('Quantità', 'Quantita') for c in df_q.columns]
+        # RINOMINIAMO LE COLONNE PER SICUREZZA (Giorno, Prodotto, Quantita)
+        # Se nel foglio sono diverse, le forziamo in base alla posizione
+        if len(df_q.columns) >= 3:
+            df_q.columns = ['Giorno', 'Prodotto', 'Quantita'] + list(df_q.columns[3:])
         
-        if 'Quantita' in df_q.columns:
-            df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
-            
-            # --- 1. GRAFICO TOTALI ---
-            df_sum = df_q.groupby('Prodotto')['Quantita'].sum().reset_index()
-            st.subheader("Totale complessivo Sagra")
-            fig_tot = px.bar(df_sum, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
-                             color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
-            st.plotly_chart(fig_tot, use_container_width=True)
+        # Pulizia dati
+        df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
+        
+        # 1. GRAFICO TOTALI
+        df_sum = df_q.groupby('Prodotto')['Quantita'].sum().reset_index()
+        st.subheader("Totale complessivo Sagra")
+        fig_tot = px.bar(df_sum, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
+                         color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
+        st.plotly_chart(fig_tot, use_container_width=True)
 
-            st.divider()
+        st.divider()
 
-            # --- 2. GRAFICO SCORPORATO PER DATA ---
-            st.subheader("Dettaglio produzione per Giorno")
-            # Raggruppiamo per Giorno e Prodotto per sicurezza (se ci sono più inserimenti nello stesso giorno)
-            df_daily = df_q.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
-            
-            fig_daily = px.bar(df_daily, 
-                               x='Giorno', 
-                               y='Quantita', 
-                               color='Prodotto', 
-                               barmode='group', # Mette le barre dei prodotti una di fianco all'altra
-                               text_auto=True,
-                               title="Produzione giornaliera (kg)",
-                               color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
-            
-            # Ordiniamo le date se possibile (per evitare che il grafico le metta a caso)
-            fig_daily.update_xaxes(categoryorder='array', categoryarray=DATE_SOGLIA)
-            st.plotly_chart(fig_daily, use_container_width=True)
-            
-            with st.expander("Vedi log completo"):
-                st.dataframe(df_q.iloc[::-1], use_container_width=True)
+        # 2. GRAFICO SCORPORATO PER DATA
+        st.subheader("Dettaglio produzione per Giorno")
+        df_daily = df_q.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
+        
+        fig_daily = px.bar(df_daily, x='Giorno', y='Quantita', color='Prodotto', 
+                           barmode='group', text_auto=True,
+                           color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
+        
+        fig_daily.update_xaxes(categoryorder='array', categoryarray=DATE_SOGLIA)
+        st.plotly_chart(fig_daily, use_container_width=True)
+        
+        with st.expander("Vedi log inserimenti"):
+            st.dataframe(df_q.iloc[::-1], use_container_width=True)
     else:
-        st.info("Nessun dato registrato.")
+        st.info("Nessun dato registrato nel foglio 'Quantità Grigliate'.")
 
 # --- TAB 3: ADMIN ---
 with tab3:
     st.subheader("Gestione")
-    st.link_button("📂 Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
+    st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
