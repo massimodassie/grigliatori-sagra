@@ -36,6 +36,7 @@ TURNI = [
 def load_data(url):
     try:
         df = pd.read_csv(f"{url}&nocache={time.time()}")
+        # Pulizia base nomi colonne
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except:
@@ -64,7 +65,13 @@ with tab1:
     user = st.selectbox("Chi sei?", grigliatori)
     st.subheader(f"Turni di: {user}")
     df_p = load_data(URL_PRESENZE)
-    miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist() if not df_p.empty else []
+    
+    # Pulizia forzata per la tabella presenze
+    if not df_p.empty:
+        if "Nome" not in df_p.columns: df_p.columns = ['Nome', 'Turno'] + list(df_p.columns[2:])
+        miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist()
+    else:
+        miei_turni = []
     
     cols = st.columns(3)
     for i, t in enumerate(TURNI):
@@ -94,7 +101,6 @@ with tab1:
 with tab2:
     st.header("🍖 Monitoraggio Griglia in Tempo Reale")
     
-    # 1. Modulo di inserimento "veloce"
     with st.expander("➕ Inserisci Nuova Grigliata (anche ogni ora)", expanded=True):
         with st.form("carne_form_smart", clear_on_submit=True):
             c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
@@ -104,7 +110,6 @@ with tab2:
             f_ora = c4.text_input("Ora", value=datetime.now().strftime("%H:%M"))
             
             if st.form_submit_button("Registra Ora 📝"):
-                # Salviamo Data, Prodotto, Quantità e Ora
                 if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]):
                     st.success(f"Registrati {f_qta}kg alle {f_ora}!")
                     time.sleep(1)
@@ -114,13 +119,18 @@ with tab2:
     
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
-        # Standardizzazione colonne: Giorno, Prodotto, Quantita, Ora
+        # --- FIX KEYERROR: Rinominiamo le colonne in base alla POSIZIONE ---
+        # Questo ignora completamente come si chiamano nel foglio Google
         if len(df_q.columns) >= 4:
             df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'] + list(df_q.columns[4:])
+        elif len(df_q.columns) == 3:
+            df_q.columns = ['Giorno', 'Prodotto', 'Quantita']
+            df_q['Ora'] = "00:00" # Fallback se manca la colonna Ora nel foglio
         
+        # Ora 'Quantita' esiste sicuramente
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
         
-        # --- GRAFICO ANDAMENTO ORARIO (Novità!) ---
+        # --- GRAFICI ---
         st.subheader("📈 Andamento Produzione Giornaliera")
         f_data_view = st.selectbox("Seleziona il giorno per vedere l'andamento:", DATE_SOGLIA)
         df_filtered = df_q[df_q['Giorno'] == f_data_view].sort_values(by='Ora')
@@ -133,7 +143,6 @@ with tab2:
         else:
             st.info("Ancora nessun dato per questa giornata.")
 
-        # --- TOTALI RIASSUNTIVI ---
         st.divider()
         col_t1, col_t2 = st.columns(2)
         
@@ -152,16 +161,13 @@ with tab2:
             fig_daily.update_xaxes(categoryorder='array', categoryarray=DATE_SOGLIA)
             st.plotly_chart(fig_daily, use_container_width=True)
 
-        # --- GESTIONE ERRORI ---
-        with st.expander("🛠️ Hai commesso un errore? Modifica qui"):
-            st.warning("Per modificare o eliminare un inserimento, apri il foglio Google qui sotto e cambia il valore nella riga corrispondente.")
-            st.link_button("📂 Vai al Foglio Dati per correggere", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
+        with st.expander("🛠️ Log e Correzioni"):
             st.dataframe(df_q.iloc[::-1], use_container_width=True)
+            st.link_button("📂 Vai al Foglio Google per modificare/cancellare", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
     else:
         st.info("Nessun dato registrato.")
 
 # --- TAB 3: ADMIN ---
 with tab3:
     st.subheader("Gestione Sistema")
-    st.write(f"ID Foglio: `{SHEET_ID}`")
     st.link_button("📂 Apri Database Completo", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
