@@ -2,9 +2,11 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.graph_objects as go
+import plotly.express as px
 import urllib.parse
 import requests
 import json
+import re
 
 # 1. --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
@@ -14,7 +16,6 @@ SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
 URL_CONTATTI = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Contatti"
-# Aggiornato con il tuo nuovo nome foglio
 URL_MAGAZZINO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Quantità%20Grigliate"
 
 LAT, LON = 45.8, 12.2 
@@ -66,6 +67,11 @@ def get_weather(date_iso):
         return "⏳ -"
     except: return "🌡️ -"
 
+def extract_number(text):
+    # Cerca il primo numero in una stringa (es: "30kg" -> 30)
+    match = re.search(r"(\d+)", str(text))
+    return int(match.group(1)) if match else 0
+
 # --- INTERFACCIA ---
 st.title("🔥 Portale Sagra 2026")
 
@@ -99,26 +105,41 @@ with tab_user:
 
 # --- SCHEDA CUCINA ---
 with tab_food:
-    st.subheader("Registrazione Quantità Preparate")
+    st.subheader("Registrazione Quantità")
     with st.form("food_form", clear_on_submit=True):
         col1, col2, col3 = st.columns(3)
         f_data = col1.selectbox("Giorno", list(DATE_SOGLIA.keys()))
-        f_prod = col2.text_input("Prodotto (es: Costine, Salsicce)")
-        f_qty = col3.text_input("Quantità (es: 30kg, 100pz)")
-        submit = st.form_submit_button("Invia in cucina 📝")
+        f_prod = col2.selectbox("Cibo", ["Costicine", "Salsicce", "Braciole"])
+        f_qty = col3.text_input("Quantità (solo numero, es: 50)")
+        submit = st.form_submit_button("Registra Preparazione 📝")
         
-        if submit and f_prod and f_qty:
-            # Salvataggio nel foglio corretto
+        if submit and f_qty:
             save_to_gsheet("Quantità Grigliate", [f_data, f_prod, f_qty])
-            st.success(f"Registrato: {f_prod} per {f_data}")
+            st.success(f"Registrato: {f_qty} di {f_prod}")
+            st.rerun()
 
     st.divider()
-    st.subheader("Riepilogo Preparazioni")
     df_m = load_gsheet(URL_MAGAZZINO)
     if not df_m.empty:
-        st.dataframe(df_m.iloc[::-1], use_container_width=True)
+        # Prepariamo i dati per il grafico
+        df_m['Valore'] = df_m['Quantita'].apply(extract_number)
+        
+        # Sommiamo per prodotto
+        df_sum = df_m.groupby('Prodotto')['Valore'].sum().reset_index()
+        
+        # Creazione grafico a barre
+        fig_bar = px.bar(df_sum, x='Prodotto', y='Valore', 
+                         title="Totale Quantità Grigliate (Totale Sagra)",
+                         labels={'Valore':'Quantità (kg/pz)', 'Prodotto':'Cibo'},
+                         color='Prodotto',
+                         color_discrete_map={"Costicine": "#EF553B", "Salsicce": "#FFA15A", "Braciole": "#636EFA"})
+        
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        with st.expander("Vedi tabella dettagliata"):
+            st.dataframe(df_m.iloc[::-1], use_container_width=True)
     else:
-        st.info("Ancora nessuna quantità registrata nel foglio 'Quantità Grigliate'.")
+        st.info("Nessun dato presente per il grafico.")
 
 # --- SCHEDA ADMIN ---
 with tab_admin:
@@ -138,8 +159,9 @@ with tab_admin:
                 m = urllib.parse.quote(f"Ciao {p}! Turno: {t_adm}. 🔥")
                 c_w.markdown(f"[📲 WA](https://wa.me/39{num}?text={m})")
 
-# 3. --- GRAFICI ---
+# 3. --- GRAFICI PRESENZE ---
 st.divider()
+st.subheader("Stato Copertura Turni")
 df_v = load_gsheet(URL_PRESENZE)
 if not df_v.empty:
     df_v = df_v.drop_duplicates(subset=['Nome', 'Turno'], keep='last')
