@@ -19,7 +19,6 @@ URL_MAGAZZINO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=
 
 DATE_SOGLIA = ["Sabato 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio", "Venerdì 15 maggio", "Sabato 16 maggio", "Domenica 17 maggio", "Sabato 23 maggio", "Domenica 24 maggio"]
 PRODOTTI_ORDINE = ["Costicine", "Salsicce", "Braciole"]
-# Colori richiesti: Rosso, Azzurro, Nero
 COLOR_MAP = {"Costicine": "#FF0000", "Salsicce": "#00BFFF", "Braciole": "#000000"}
 
 # --- 2. FUNZIONI ---
@@ -27,8 +26,6 @@ def load_data(url):
     try:
         df = pd.read_csv(f"{url}&nocache={time.time()}")
         df.columns = [str(c).strip() for c in df.columns]
-        # Pulizia spazi bianchi nei dati
-        df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
         return df
     except: return pd.DataFrame()
 
@@ -60,7 +57,6 @@ with tab1:
         miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist()
     else: miei_turni = []
 
-    st.subheader("Segna i tuoi turni")
     cols = st.columns(3)
     turni_lista = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
     for i, t in enumerate(turni_lista):
@@ -69,7 +65,7 @@ with tab1:
                 if t not in miei_turni:
                     if save_data("Presenze", [user, t]): st.rerun()
 
-# --- TAB 2: CARNE (FIX GRAFICI GIORNALIERI) ---
+# --- TAB 2: CARNE (FIX GIORNALIERI AUTOMATICO) ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     
@@ -86,32 +82,33 @@ with tab2:
     df_q = load_data(URL_MAGAZZINO)
     
     if not df_q.empty:
-        # Forziamo i nomi delle colonne
+        # Pulizia e assegnazione nomi colonne forzata
         if len(df_q.columns) >= 3:
             df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
+        df_q['Giorno'] = df_q['Giorno'].astype(str).str.strip()
 
         # --- SEZIONE 1: GRAFICI GIORNALIERI (IN CIMA) ---
         st.subheader("📅 Dettaglio Produzione per Giorno")
         
-        # Identifichiamo i giorni presenti nel foglio (senza errori di spazi)
-        giorni_rilevati = df_q['Giorno'].unique()
+        # Prendiamo tutte le date uniche effettivamente presenti nel foglio
+        giorni_nel_foglio = df_q['Giorno'].unique()
         
-        # Mostriamo i grafici seguendo l'ordine cronologico di DATE_SOGLIA
+        # Ordiniamo i grafici: prima quelli che seguono DATE_SOGLIA, poi gli altri
         for giorno in DATE_SOGLIA:
-            if giorno in giorni_rilevati:
+            if giorno in giorni_nel_foglio:
                 df_giorno = df_q[df_q['Giorno'] == giorno].groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).reset_index().fillna(0)
                 
                 if df_giorno['Quantita'].sum() > 0:
-                    fig_giorno = px.bar(
+                    fig_g = px.bar(
                         df_giorno, x='Prodotto', y='Quantita', color='Prodotto', 
                         text_auto=True, title=f"Produzione: {giorno}",
                         color_discrete_map=COLOR_MAP,
                         category_orders={"Prodotto": PRODOTTI_ORDINE}
                     )
-                    fig_giorno.update_layout(showlegend=False, height=300)
-                    st.plotly_chart(fig_giorno, use_container_width=True, key=f"g_{giorno}")
+                    fig_g.update_layout(showlegend=False, height=300)
+                    st.plotly_chart(fig_g, use_container_width=True)
 
         # --- SEZIONE 2: GRAFICO TOTALE (IN FONDO) ---
         st.divider()
@@ -136,7 +133,7 @@ with tab2:
                 if c4.button("Elimina", key=f"del_{i}"):
                     if delete_row("Quantità Grigliate", i + 1): st.rerun()
     else:
-        st.info("Inizia a inserire dati per vedere i grafici giornalieri.")
+        st.info("Nessun dato trovato. Inserisci una grigliata per vedere i grafici.")
 
 with tab3:
     st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
