@@ -17,14 +17,16 @@ foglio_q = urllib.parse.quote("Quantità Grigliate")
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
 URL_MAGAZZINO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={foglio_q}"
 
+# Corretto in Sabato 09 maggio
 DATE_SOGLIA = [
     "Sabato 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio",
     "Venerdì 15 maggio", "Sabato 16 maggio", "Domenica 17 maggio",
     "Sabato 23 maggio", "Domenica 24 maggio"
 ]
 
+# Corretto il primo turno in Sabato 09 maggio per coerenza
 TURNI = [
-    "Venerdì 09 maggio - Cena", "Domenica 10 maggio - Pranzo", 
+    "Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", 
     "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", 
     "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", 
     "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", 
@@ -65,14 +67,12 @@ with tab1:
     st.subheader(f"Turni di: {user}")
     df_p = load_data(URL_PRESENZE)
     
-    # Filtriamo le presenze dell'utente selezionato
     miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist() if not df_p.empty else []
     
     cols = st.columns(3)
     for i, t in enumerate(TURNI):
         with cols[i%3]:
-            # IL FIX: La key del toggle ora include il nome dell'utente 'key=f"t_{user}_{i}"'
-            # Se cambi utente, la key cambia e il toggle si resetta correttamente
+            # La key include l'utente per resettarsi al cambio nome
             if st.toggle(t, value=(t in miei_turni), key=f"t_{user}_{i}"):
                 if t not in miei_turni:
                     if save_data("Presenze", [user, t]):
