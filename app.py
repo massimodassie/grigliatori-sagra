@@ -6,6 +6,7 @@ import requests
 import json
 import time
 import urllib.parse
+from datetime import datetime
 
 # 1. --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
@@ -50,7 +51,7 @@ def save_data(sheet, data):
 # --- INTERFACCIA ---
 st.title("🔥 Portale Grigliatori 2026")
 
-tab1, tab2, tab3 = st.tabs(["👥 I Miei Turni", "🍖 Quantità Carne", "⚙️ Admin"])
+tab1, tab2, tab3 = st.tabs(["👥 I Miei Turni", "🍖 Monitor Carne", "⚙️ Admin"])
 
 # --- TAB 1: TURNI ---
 with tab1:
@@ -60,12 +61,9 @@ with tab1:
         "Modolo Zanchetta Mirko", "Perencin Davide", "Perencin Francesco", 
         "Rossi Riccardo", "Sossai Gianluca"
     ]
-    
     user = st.selectbox("Chi sei?", grigliatori)
-    
     st.subheader(f"Turni di: {user}")
     df_p = load_data(URL_PRESENZE)
-    
     miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist() if not df_p.empty else []
     
     cols = st.columns(3)
@@ -85,69 +83,85 @@ with tab1:
             with cols_pie[i%3]:
                 count = len(df_p_clean[df_p_clean['Turno'] == t])
                 target = 5 if "Pranzo" in t else 6
-                
-                # LOGICA COLORE DINAMICO
-                # Verde se count >= target, altrimenti Rosso
                 colore_stato = "#2a9d8f" if count >= target else "#e63946"
-                
-                fig = go.Figure(go.Pie(
-                    values=[count, max(0, target-count)], 
-                    hole=0.6, 
-                    marker_colors=[colore_stato, "#eeeeee"], 
-                    showlegend=False,
-                    sort=False # Evita che i colori si invertano se il target è superato
-                ))
-                
-                fig.update_layout(
-                    title=f"<b>{t}</b>", 
-                    height=200, 
-                    margin=dict(t=40,b=0,l=0,r=0),
-                    annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False)]
-                )
+                fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, 
+                                        marker_colors=[colore_stato, "#eeeeee"], showlegend=False, sort=False))
+                fig.update_layout(title=f"<b>{t}</b>", height=200, margin=dict(t=40,b=0,l=0,r=0),
+                                  annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True, key=f"p_chart_{i}")
 
-# --- TAB 2: CARNE ---
+# --- TAB 2: CARNE SMART ---
 with tab2:
-    st.header("🍖 Registrazione Produzione")
-    with st.form("carne_form", clear_on_submit=True):
-        c1, c2, c3 = st.columns(3)
-        f_data = c1.selectbox("Giorno", DATE_SOGLIA)
-        f_tipo = c2.selectbox("Cibo", ["Costicine", "Salsicce", "Braciole"])
-        f_qta = c3.number_input("Quantità (kg)", min_value=1, step=1)
-        if st.form_submit_button("Invia Dati 📝"):
-            if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta]):
-                st.success(f"Registrati {f_qta}kg!")
-                time.sleep(1)
-                st.rerun()
+    st.header("🍖 Monitoraggio Griglia in Tempo Reale")
+    
+    # 1. Modulo di inserimento "veloce"
+    with st.expander("➕ Inserisci Nuova Grigliata (anche ogni ora)", expanded=True):
+        with st.form("carne_form_smart", clear_on_submit=True):
+            c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+            f_data = c1.selectbox("Giorno", DATE_SOGLIA)
+            f_tipo = c2.selectbox("Cibo", ["Costicine", "Salsicce", "Braciole"])
+            f_qta = c3.number_input("Quantità (kg)", min_value=1, step=1)
+            f_ora = c4.text_input("Ora", value=datetime.now().strftime("%H:%M"))
+            
+            if st.form_submit_button("Registra Ora 📝"):
+                # Salviamo Data, Prodotto, Quantità e Ora
+                if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]):
+                    st.success(f"Registrati {f_qta}kg alle {f_ora}!")
+                    time.sleep(1)
+                    st.rerun()
 
     st.divider()
+    
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
-        if len(df_q.columns) >= 3:
-            df_q.columns = ['Giorno', 'Prodotto', 'Quantita'] + list(df_q.columns[3:])
+        # Standardizzazione colonne: Giorno, Prodotto, Quantita, Ora
+        if len(df_q.columns) >= 4:
+            df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'] + list(df_q.columns[4:])
+        
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
         
-        df_sum = df_q.groupby('Prodotto')['Quantita'].sum().reset_index()
-        st.subheader("Totale complessivo Sagra")
-        fig_tot = px.bar(df_sum, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
-                         color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
-        st.plotly_chart(fig_tot, use_container_width=True)
-
-        st.divider()
-        st.subheader("Dettaglio produzione per Giorno")
-        df_daily = df_q.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
-        fig_daily = px.bar(df_daily, x='Giorno', y='Quantita', color='Prodotto', 
-                           barmode='group', text_auto=True,
-                           color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
-        fig_daily.update_xaxes(categoryorder='array', categoryarray=DATE_SOGLIA)
-        st.plotly_chart(fig_daily, use_container_width=True)
+        # --- GRAFICO ANDAMENTO ORARIO (Novità!) ---
+        st.subheader("📈 Andamento Produzione Giornaliera")
+        f_data_view = st.selectbox("Seleziona il giorno per vedere l'andamento:", DATE_SOGLIA)
+        df_filtered = df_q[df_q['Giorno'] == f_data_view].sort_values(by='Ora')
         
-        with st.expander("Vedi log inserimenti"):
+        if not df_filtered.empty:
+            fig_line = px.line(df_filtered, x='Ora', y='Quantita', color='Prodotto', markers=True,
+                               title=f"Kg prodotti nel tempo ({f_data_view})",
+                               color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
+            st.plotly_chart(fig_line, use_container_width=True)
+        else:
+            st.info("Ancora nessun dato per questa giornata.")
+
+        # --- TOTALI RIASSUNTIVI ---
+        st.divider()
+        col_t1, col_t2 = st.columns(2)
+        
+        with col_t1:
+            st.subheader("📊 Totale Sagra")
+            df_sum = df_q.groupby('Prodotto')['Quantita'].sum().reset_index()
+            fig_tot = px.bar(df_sum, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
+                             color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
+            st.plotly_chart(fig_tot, use_container_width=True)
+            
+        with col_t2:
+            st.subheader("📅 Totale per Giorno")
+            df_daily = df_q.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
+            fig_daily = px.bar(df_daily, x='Giorno', y='Quantita', color='Prodotto', barmode='group',
+                               color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
+            fig_daily.update_xaxes(categoryorder='array', categoryarray=DATE_SOGLIA)
+            st.plotly_chart(fig_daily, use_container_width=True)
+
+        # --- GESTIONE ERRORI ---
+        with st.expander("🛠️ Hai commesso un errore? Modifica qui"):
+            st.warning("Per modificare o eliminare un inserimento, apri il foglio Google qui sotto e cambia il valore nella riga corrispondente.")
+            st.link_button("📂 Vai al Foglio Dati per correggere", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
             st.dataframe(df_q.iloc[::-1], use_container_width=True)
     else:
         st.info("Nessun dato registrato.")
 
 # --- TAB 3: ADMIN ---
 with tab3:
-    st.subheader("Gestione")
-    st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
+    st.subheader("Gestione Sistema")
+    st.write(f"ID Foglio: `{SHEET_ID}`")
+    st.link_button("📂 Apri Database Completo", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
