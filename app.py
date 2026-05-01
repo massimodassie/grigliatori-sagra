@@ -4,14 +4,11 @@ import os
 import plotly.graph_objects as go
 import urllib.parse
 import requests
-from datetime import datetime
 
 # 1. --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
 
-# Coordinate per il meteo (Esempio: zona Treviso/Venezia)
-LAT = 45.8
-LON = 12.2
+LAT, LON = 45.8, 12.2 # Coordinate zona Sagra
 
 GRIGLIATORI = sorted([
     "Seleziona il tuo nome...",
@@ -21,91 +18,50 @@ GRIGLIATORI = sorted([
     "Mirko Modolo Zanchetta", "Radu Apostol", "Riccardo Rossi"
 ])
 
-# Mappa delle date per il meteo (YYYY-MM-DD)
 DATE_SOGLIA = {
-    "Venerdì 09 maggio": "2026-05-09",
-    "Domenica 10 maggio": "2026-05-10",
-    "Venerdì 15 maggio": "2026-05-15",
-    "Sabato 16 maggio": "2026-05-16",
-    "Domenica 17 maggio": "2026-05-17",
-    "Sabato 23 maggio": "2026-05-23",
+    "Venerdì 09 maggio": "2026-05-09", "Domenica 10 maggio": "2026-05-10",
+    "Venerdì 15 maggio": "2026-05-15", "Sabato 16 maggio": "2026-05-16",
+    "Domenica 17 maggio": "2026-05-17", "Sabato 23 maggio": "2026-05-23",
     "Domenica 24 maggio": "2026-05-24"
 }
 
 TURNI = [
-    "Venerdì 09 maggio - Cena", 
-    "Domenica 10 maggio - Pranzo", 
-    "Domenica 10 maggio - Cena", 
-    "Venerdì 15 maggio - Cena della costata", 
-    "Sabato 16 maggio - Cena", 
-    "Domenica 17 maggio - Cena", 
-    "Sabato 23 maggio - Cena", 
-    "Domenica 24 maggio - Pranzo", 
+    "Venerdì 09 maggio - Cena", "Domenica 10 maggio - Pranzo", 
+    "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", 
+    "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", 
+    "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", 
     "Domenica 24 maggio - Cena"
 ]
 
 DATA_FILE = "presenze_sagra.csv"
 CONTATTI_FILE = "contatti_grigliatori.csv"
 
-# --- FUNZIONE METEO MIGLIORATA ---
-def get_weather(date_str):
-    if not date_str:
-        return "⏳ Previsioni a breve" # Messaggio più chiaro di N/D
-    try:
-        # Chiamata all'API
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&daily=weathercode,temperature_2m_max&timezone=Europe%2遴Rome&start_date={date_str}&end_date={date_str}"
-        response = requests.get(url, timeout=5).json()
-        
-        if 'daily' in response:
-            code = response['daily']['weathercode'][0]
-            temp = response['daily']['temperature_2m_max'][0]
-            
-            # Mappa codici WMO
-            icons = {
-                0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️", 
-                45: "🌫️", 48: "🌫️", 51: "🌦️", 53: "🌦️", 55: "🌦️",
-                61: "🌧️", 63: "🌧️", 65: "🌧️", 95: "⛈️"
-            }
-            icon = icons.get(code, "🌤️")
-            return f"{icon} {temp}°C"
-        else:
-            return "⏳ - " # Previsione non ancora disponibile
-    except:
-        return "🌡️ -"
-
-# --- CICLO TOGGLE CORRETTO ---
-col1, col2, col3 = st.columns(3)
-for i, turno in enumerate(TURNI):
-    target_col = [col1, col2, col3][i % 3]
-    with target_col:
-        # Estraiamo la parte della data (es. "Venerdì 09 maggio")
-        # Il trucco è prendere le prime 3 parole del nome del turno
-        parti_turno = turno.split(" ")
-        data_estratta = f"{parti_turno[0]} {parti_turno[1]} {parti_turno[2]}"
-        
-        data_iso = DATE_SOGLIA.get(data_estratta, "")
-        info_meteo = get_weather(data_iso)
-        
-        st.caption(f"Meteo: {info_meteo}") # Usiamo caption per un testo più piccolo ed elegante
-        chiave = f"tgl_{nome_sel}_{turno}"
-        st.toggle(turno, value=(turno in turni_attivi), key=chiave,
-                  on_change=update_presence, args=(nome_sel, turno, chiave))
-
-# --- ALTRE FUNZIONI (DB) ---
+# --- FUNZIONI ---
 def load_data(file):
     if os.path.exists(file):
         try: return pd.read_csv(file)
         except: return pd.DataFrame()
     return pd.DataFrame()
 
-def update_presence(nome, turno, chiave_toggle):
-    stato = st.session_state[chiave_toggle]
+def get_weather(date_iso):
+    if not date_iso: return "⏳ -"
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&daily=weathercode,temperature_2m_max&timezone=Europe%2FRome&start_date={date_iso}&end_date={date_iso}"
+        res = requests.get(url, timeout=5).json()
+        if 'daily' in res:
+            c, t = res['daily']['weathercode'][0], res['daily']['temperature_2m_max'][0]
+            icons = {0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️", 61: "🌧️", 95: "⛈️"}
+            return f"{icons.get(c, '🌤️')} {t}°C"
+        return "⏳ -"
+    except: return "🌡️ -"
+
+def update_presence(nome, turno, chiave):
+    stato = st.session_state[chiave]
     df = load_data(DATA_FILE)
     if df.empty: df = pd.DataFrame(columns=["Nome", "Turno"])
     df = df[~((df["Nome"] == nome) & (df["Turno"] == turno))]
     if stato:
-        nuova_riga = pd.DataFrame({"Nome": [nome], "Turno": [turno]})
-        df = pd.concat([df, nuova_riga], ignore_index=True)
+        df = pd.concat([df, pd.DataFrame({"Nome": [nome], "Turno": [turno]})], ignore_index=True)
     df.to_csv(DATA_FILE, index=False)
 
 # --- INTERFACCIA ---
@@ -115,65 +71,63 @@ tab_user, tab_admin = st.tabs(["📝 I Miei Turni", "📢 Promemoria WA"])
 
 with tab_user:
     nome_sel = st.selectbox("Chi sei?", GRIGLIATORI, key="user_select")
+
     if nome_sel != "Seleziona il tuo nome...":
-        # (Codice contatti invariato...)
+        # Parte contatti
         df_c = load_data(CONTATTI_FILE)
-        tel_attuale = df_c[df_c["Nome"] == nome_sel]["Telefono"].iloc[0] if not df_c.empty and nome_sel in df_c["Nome"].values else ""
-        col_tel, col_btn = st.columns([3, 1])
-        with col_tel: nuovo_tel = st.text_input("Numero per WA:", value=str(tel_attuale))
-        with col_btn: 
-            st.write(" ")
-            if st.button("Salva"):
-                df_c = load_data(CONTATTI_FILE)
-                if df_c.empty: df_c = pd.DataFrame(columns=["Nome", "Telefono"])
-                df_c = df_c[df_c["Nome"] != nome_sel]
-                df_c = pd.concat([df_c, pd.DataFrame({"Nome": [nome_sel], "Telefono": [nuovo_tel]})], ignore_index=True)
-                df_c.to_csv(CONTATTI_FILE, index=False)
-                st.toast("Salvato!")
+        tel_att = df_c[df_c["Nome"] == nome_sel]["Telefono"].iloc[0] if not df_c.empty and nome_sel in df_c["Nome"].values else ""
+        
+        c_t, c_b = st.columns([3, 1])
+        new_tel = c_t.text_input("Il tuo numero:", value=str(tel_att))
+        if c_b.button("Salva Tel", use_container_width=True):
+            df_c = load_data(CONTATTI_FILE)
+            if df_c.empty: df_c = pd.DataFrame(columns=["Nome", "Telefono"])
+            df_c = df_c[df_c["Nome"] != nome_sel]
+            df_c = pd.concat([df_c, pd.DataFrame({"Nome":[nome_sel], "Telefono":[new_tel]})], ignore_index=True)
+            df_c.to_csv(CONTATTI_FILE, index=False)
+            st.toast("Salvato!")
 
         st.divider()
-        st.info("Tocca i turni per confermare:")
         df_p = load_data(DATA_FILE)
-        turni_attivi = df_p[df_p["Nome"] == nome_sel]["Turno"].tolist() if not df_p.empty else []
+        attivi = df_p[df_p["Nome"] == nome_sel]["Turno"].tolist() if not df_p.empty else []
         
-        col1, col2, col3 = st.columns(3)
+        # Qui c'era l'errore: ora siamo dentro l'IF, quindi nome_sel esiste!
+        cols = st.columns(3)
         for i, turno in enumerate(TURNI):
-            target_col = [col1, col2, col3][i % 3]
-            with target_col:
-                # ESTRAZIONE METEO
-                data_chiave = " ".join(turno.split(" ")[:3])
-                info_meteo = get_weather(DATE_SOGLIA.get(data_chiave, ""))
+            with cols[i % 3]:
+                d_chiave = " ".join(turno.split(" ")[:3])
+                meteo = get_weather(DATE_SOGLIA.get(d_chiave, ""))
+                st.caption(f"Previsione: {meteo}")
                 
-                st.write(f"**{info_meteo}**") # Mostra meteo sopra il toggle
-                chiave = f"tgl_{nome_sel}_{turno}"
-                st.toggle(turno, value=(turno in turni_attivi), key=chiave,
-                          on_change=update_presence, args=(nome_sel, turno, chiave))
+                k = f"tgl_{nome_sel.replace(' ', '_')}_{i}" # Chiave pulita
+                st.toggle(turno, value=(turno in attivi), key=k, 
+                          on_change=update_presence, args=(nome_sel, turno, k))
 
-# (Resto del codice Admin e Grafici invariato...)
 with tab_admin:
-    st.subheader("Lista Grigliatori per Turno")
-    df_p = load_data(DATA_FILE)
-    df_c = load_data(CONTATTI_FILE)
-    turno_admin = st.selectbox("Turno:", TURNI)
-    if not df_p.empty and turno_admin in df_p["Turno"].values:
-        presenti = df_p[df_p["Turno"] == turno_admin]["Nome"].tolist()
-        for p in presenti:
-            c_n, c_l = st.columns([2, 1])
+    st.subheader("Admin - Lista per Turno")
+    df_p, df_c = load_data(DATA_FILE), load_data(CONTATTI_FILE)
+    t_adm = st.selectbox("Seleziona turno:", TURNI)
+    if not df_p.empty and t_adm in df_p["Turno"].values:
+        pres = df_p[df_p["Turno"] == t_adm]["Nome"].tolist()
+        for p in pres:
+            c_n, c_w = st.columns([2, 1])
             num = df_c[df_c["Nome"] == p]["Telefono"].iloc[0] if not df_c.empty and p in df_c["Nome"].values else ""
             c_n.write(f"• {p}")
             if num:
-                msg = urllib.parse.quote(f"Ciao {p}! Turno: {turno_admin}. 🔥")
-                c_l.markdown(f"[📲 WA](https://wa.me/39{num}?text={msg})")
-    else: st.warning("Nessuno segnato.")
+                m = urllib.parse.quote(f"Ciao {p}! Turno: {t_adm}. 🔥")
+                c_w.markdown(f"[📲 WA](https://wa.me/39{num}?text={m})")
+    else: st.info("Nessuno segnato.")
 
+# 3. --- GRAFICI ---
 st.divider()
-st.subheader("📊 Stato Copertura")
-df_vis = load_data(DATA_FILE)
-cols = st.columns(3)
-for i, turno in enumerate(TURNI):
-    with cols[i % 3]:
-        count = len(df_vis[df_vis["Turno"] == turno]) if not df_vis.empty else 0
-        target = 5 if "Pranzo" in turno else 6
-        fig = go.Figure(data=[go.Pie(values=[count, max(0, target-count)], hole=.5, marker_colors=["green" if count>=target else "red", "#eee"], showlegend=False)])
-        fig.update_layout(title=f"<b>{turno}</b>", margin=dict(t=30, b=0, l=0, r=0), height=180)
-        st.plotly_chart(fig, key=f"ch_{i}")
+df_v = load_data(DATA_FILE)
+cols_g = st.columns(3)
+for i, t in enumerate(TURNI):
+    with cols_g[i % 3]:
+        count = len(df_v[df_v["Turno"] == t]) if not df_v.empty else 0
+        target = 5 if "Pranzo" in t else 6
+        fig = go.Figure(data=[go.Pie(values=[count, max(0, target-count)], hole=.6, 
+                                    marker_colors=["green" if count>=target else "red", "#eee"], showlegend=False)])
+        fig.update_layout(title=f"<b>{t}</b>", margin=dict(t=30, b=0, l=0, r=0), height=180, 
+                          annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
+        st.plotly_chart(fig, key=f"g_{i}", use_container_width=True)
