@@ -11,7 +11,6 @@ from datetime import datetime
 # --- 1. CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
 
-# URL dello script che mi hai fornito
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZ6rlwkixXk4d1JF5QLfsFGK_eeYtbyxoDRf7OmDg3Qffl6h6-XItgRoI5Cp6HMAUU/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
@@ -22,7 +21,7 @@ DATE_SOGLIA = ["Sabato 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio", "Ve
 PRODOTTI_ORDINE = ["Costicine", "Salsicce", "Braciole"]
 COLOR_MAP = {"Costicine": "#FF0000", "Salsicce": "#00BFFF", "Braciole": "#000000"}
 
-# --- 2. FUNZIONI DI COMUNICAZIONE ---
+# --- 2. FUNZIONI TECNICHE ---
 def load_data(url):
     try:
         response = requests.get(f"{url}&nocache={time.time()}")
@@ -31,7 +30,6 @@ def load_data(url):
             df = pd.read_csv(io.StringIO(response.text))
             df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
             df.columns = [str(c).strip() for c in df.columns]
-            # Pulizia aggressiva degli spazi e conversione in stringa per i confronti
             df = df.map(lambda x: str(x).strip() if pd.notnull(x) else x)
             return df
     except: pass
@@ -45,38 +43,88 @@ def save_data(sheet, data):
 
 def delete_row(sheet, row_index):
     try:
-        # Calcolo riga: indice DF 0 è riga 2 del foglio (riga 1 è intestazione)
         google_row = int(row_index) + 2
         url = f"{SCRIPT_URL}?sheet={urllib.parse.quote(sheet)}&deleteRow={google_row}"
         response = requests.get(url, timeout=15)
         return response.status_code == 200
     except: return False
 
+def create_ics(turno_nome, utente):
+    date_map = {
+        "Sabato 09 maggio": "20260509",
+        "Sabato 10 maggio": "20260510",
+        "Domenica 10 maggio": "20260510",
+        "Venerdì 15 maggio": "20260515",
+        "Sabato 16 maggio": "20260516",
+        "Domenica 17 maggio": "20260517",
+        "Sabato 23 maggio": "20260523",
+        "Domenica 24 maggio": "20260524",
+    }
+    giorno_testo = turno_nome.split(" - ")[0]
+    data_iso = date_map.get(giorno_testo, "20260501")
+    
+    # Orario fissato alle 09:00 come richiesto
+    ics_content = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Grigliatori Sagra//IT
+BEGIN:VEVENT
+SUMMARY:🔥 Turno Griglia: {turno_nome}
+DTSTART;TZID=Europe/Rome:{data_iso}T090000
+DTEND;TZID=Europe/Rome:{data_iso}T100000
+DESCRIPTION:Promemoria per il tuo turno alla sagra: {turno_nome}
+BEGIN:VALARM
+TRIGGER:PT0M
+ACTION:DISPLAY
+DESCRIPTION:Sveglia Turno Griglia
+END:VALARM
+END:VEVENT
+END:VCALENDAR"""
+    return ics_content
+
 # --- 3. INTERFACCIA ---
 st.title("🔥 Portale Grigliatori 2026")
-tab1, tab2, tab3 = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "⚙️ Admin"])
+tab1, tab2, tab3 = st.tabs(["👥 Presenze & Calendario", "🍖 Monitor Carne", "⚙️ Admin"])
 
-# --- TAB 1: PRESENZE ---
 with tab1:
     grigliatori = ["Boscaratto Denis", "Botteon Marco", "Da Ronch Loris", "Dassie Massimo", "Disconzi Francesco", "Flavio", "Giacomo", "Micieli Mauro", "Modolo Zanchetta Mirko", "Perencin Davide", "Perencin Francesco", "Rossi Riccardo", "Sossai Gianluca"]
     user = st.selectbox("Chi sei?", grigliatori)
-    df_p = load_data(URL_PRESENZE)
     
+    df_p = load_data(URL_PRESENZE)
+    miei_turni = []
     if not df_p.empty and len(df_p.columns) >= 2:
         df_p.columns = ['Nome', 'Turno'] + list(df_p.columns[2:])
         miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist()
-        
-        turni_lista = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
-        
-        cols = st.columns(3)
-        for i, t in enumerate(turni_lista):
-            with cols[i%3]:
-                is_on = (t in miei_turni)
-                if st.toggle(t, value=is_on, key=f"t_{user}_{i}"):
-                    if not is_on:
-                        if save_data("Presenze", [user, t]): st.rerun()
+    
+    turni_lista = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
+    
+    st.subheader("Segna i tuoi turni")
+    cols = st.columns(3)
+    for i, t in enumerate(turni_lista):
+        with cols[i%3]:
+            is_on = (t in miei_turni)
+            if st.toggle(t, value=is_on, key=f"t_{user}_{i}"):
+                if not is_on:
+                    if save_data("Presenze", [user, t]): st.rerun()
 
+    # Sezione Calendario (Promemoria ICS)
+    if miei_turni:
         st.divider()
+        st.subheader("📅 Aggiungi al Calendario del Telefono")
+        st.write("Clicca per scaricare il promemoria (Notifica alle ore 09:00):")
+        c_cal = st.columns(2)
+        for idx, turno in enumerate(miei_turni):
+            with c_cal[idx % 2]:
+                ics_data = create_ics(turno, user)
+                st.download_button(
+                    label=f"⏰ Sveglia {turno}",
+                    data=ics_data,
+                    file_name=f"turno_{idx}.ics",
+                    mime="text/calendar",
+                    key=f"btn_ics_{idx}"
+                )
+
+    st.divider()
+    if not df_p.empty:
         st.subheader("📊 Stato Copertura")
         df_count = df_p.drop_duplicates().copy()
         cp = st.columns(3)
@@ -86,15 +134,12 @@ with tab1:
                 target = 5 if "Pranzo" in t else 6
                 fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, 
                                         marker_colors=["#2a9d8f" if count >= target else "#FF0000", "#eeeeee"], showlegend=False))
-                fig.update_layout(title=f"<b>{t}</b>", height=180, margin=dict(t=30,b=0,l=0,r=0),
-                                  annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
+                fig.update_layout(title=f"<b>{t}</b>", height=180, margin=dict(t=30,b=0,l=0,r=0))
                 st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 2: CARNE ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
-    
-    with st.expander("➕ Inserisci Nuova Quantità", expanded=False):
+    with st.expander("➕ Inserisci Nuova Quantità"):
         with st.form("carne_form"):
             c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
             f_data = c1.selectbox("Giorno", DATE_SOGLIA)
@@ -108,16 +153,11 @@ with tab2:
                     st.rerun()
 
     df_q = load_data(URL_MAGAZZINO)
-    
     if not df_q.empty:
-        # Assicuriamo i nomi delle colonne
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
-
-        # 1. Grafici Giornalieri
         st.subheader("📅 Dettaglio Giornaliero")
         for data_target in DATE_SOGLIA:
-            # Filtro "contains" per bypassare errori di spazi
             df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
             if not df_giorno.empty:
                 df_plot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
@@ -127,8 +167,7 @@ with tab2:
                                  color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
                     fig.update_layout(showlegend=False, height=300)
                     st.plotly_chart(fig, use_container_width=True)
-
-        # 2. Grafico Totale
+        
         st.divider()
         st.subheader("📊 Totale Complessivo (Kg)")
         df_tot = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
@@ -136,22 +175,16 @@ with tab2:
                          color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
         st.plotly_chart(fig_tot, use_container_width=True)
 
-        # 3. Sezione Eliminazione
-        st.divider()
         with st.expander("🗑️ Cancella Inserimenti"):
-            # Mostriamo gli ultimi 10 inserimenti per riga
             last_entries = df_q.tail(10).iloc[::-1]
             for i, row in last_entries.iterrows():
                 c_info, c_btn = st.columns([8, 2])
                 c_info.write(f"**{row['Giorno']}** - {row['Prodotto']} ({int(row['Quantita'])}kg)")
                 if c_btn.button("Elimina", key=f"del_{i}"):
-                    with st.spinner("Eliminazione..."):
-                        if delete_row("Quantità Grigliate", i):
-                            st.success("Riga eliminata!")
-                            time.sleep(1.5) # Tempo per Google di aggiornare
-                            st.rerun()
-    else:
-        st.info("In attesa di dati dal magazzino...")
+                    if delete_row("Quantità Grigliate", i):
+                        st.success("Riga eliminata!")
+                        time.sleep(1)
+                        st.rerun()
 
 with tab3:
     st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
