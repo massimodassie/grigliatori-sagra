@@ -18,7 +18,7 @@ URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=o
 URL_MAGAZZINO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={foglio_q}"
 
 DATE_SOGLIA = [
-    "Venerdì 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio",
+    "Sabato 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio",
     "Venerdì 15 maggio", "Sabato 16 maggio", "Domenica 17 maggio",
     "Sabato 23 maggio", "Domenica 24 maggio"
 ]
