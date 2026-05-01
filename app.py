@@ -35,7 +35,6 @@ TURNI = [
 def load_data(url):
     try:
         df = pd.read_csv(f"{url}&nocache={time.time()}")
-        # PULIZIA COLONNE: togliamo spazi e rendiamo tutto standard
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except:
@@ -55,32 +54,26 @@ tab1, tab2, tab3 = st.tabs(["👥 I Miei Turni", "🍖 Quantità Carne", "⚙️
 
 # --- TAB 1: TURNI ---
 with tab1:
-    # LISTA ORDINATA ALFABETICAMENTE
     grigliatori = [
-        "Boscaratto Denis",
-        "Botteon Marco",
-        "Da Ronch Loris",
-        "Dassie Massimo",
-        "Disconzi Francesco",
-        "Flavio",
-        "Giacomo",
-        "Micieli Mauro",
-        "Modolo Zanchetta Mirko",
-        "Perencin Francesco",
-        "Rossi Riccardo",
-        "Sossai Gianluca"
+        "Boscaratto Denis", "Botteon Marco", "Da Ronch Loris", "Dassie Massimo",
+        "Disconzi Francesco", "Flavio", "Giacomo", "Micieli Mauro",
+        "Modolo Zanchetta Mirko", "Perencin Francesco", "Rossi Riccardo", "Sossai Gianluca"
     ]
     
     user = st.selectbox("Chi sei?", grigliatori)
     
-    st.subheader("Segna la tua presenza")
+    st.subheader(f"Turni di: {user}")
     df_p = load_data(URL_PRESENZE)
+    
+    # Filtriamo le presenze dell'utente selezionato
     miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist() if not df_p.empty else []
     
     cols = st.columns(3)
     for i, t in enumerate(TURNI):
         with cols[i%3]:
-            if st.toggle(t, value=(t in miei_turni), key=f"t_{i}"):
+            # IL FIX: La key del toggle ora include il nome dell'utente 'key=f"t_{user}_{i}"'
+            # Se cambi utente, la key cambia e il toggle si resetta correttamente
+            if st.toggle(t, value=(t in miei_turni), key=f"t_{user}_{i}"):
                 if t not in miei_turni:
                     if save_data("Presenze", [user, t]):
                         st.rerun()
@@ -100,10 +93,9 @@ with tab1:
                                   annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True, key=f"p_chart_{i}")
 
-# --- TAB 2: CARNE (ROBUSTA) ---
+# --- TAB 2: CARNE ---
 with tab2:
     st.header("🍖 Registrazione Produzione")
-    
     with st.form("carne_form", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         f_data = c1.selectbox("Giorno", DATE_SOGLIA)
@@ -116,15 +108,12 @@ with tab2:
                 st.rerun()
 
     st.divider()
-    
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
         if len(df_q.columns) >= 3:
             df_q.columns = ['Giorno', 'Prodotto', 'Quantita'] + list(df_q.columns[3:])
-        
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
         
-        # 1. GRAFICO TOTALI
         df_sum = df_q.groupby('Prodotto')['Quantita'].sum().reset_index()
         st.subheader("Totale complessivo Sagra")
         fig_tot = px.bar(df_sum, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
@@ -132,22 +121,18 @@ with tab2:
         st.plotly_chart(fig_tot, use_container_width=True)
 
         st.divider()
-
-        # 2. GRAFICO SCORPORATO PER DATA
         st.subheader("Dettaglio produzione per Giorno")
         df_daily = df_q.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
-        
         fig_daily = px.bar(df_daily, x='Giorno', y='Quantita', color='Prodotto', 
                            barmode='group', text_auto=True,
                            color_discrete_map={"Costicine": "#e63946", "Salsicce": "#f4a261", "Braciole": "#457b9d"})
-        
         fig_daily.update_xaxes(categoryorder='array', categoryarray=DATE_SOGLIA)
         st.plotly_chart(fig_daily, use_container_width=True)
         
         with st.expander("Vedi log inserimenti"):
             st.dataframe(df_q.iloc[::-1], use_container_width=True)
     else:
-        st.info("Nessun dato registrato nel foglio 'Quantità Grigliate'.")
+        st.info("Nessun dato registrato.")
 
 # --- TAB 3: ADMIN ---
 with tab3:
