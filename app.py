@@ -20,7 +20,7 @@ URL_MAGAZZINO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=
 DATE_SOGLIA = ["Sabato 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio", "Venerdì 15 maggio", "Sabato 16 maggio", "Domenica 17 maggio", "Sabato 23 maggio", "Domenica 24 maggio"]
 TURNI = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
 
-# Mappa Colori e Ordine Custom
+# Mappa Colori e Ordine (Costicine Rosso, Salsicce Azzurro, Braciole Nero)
 COLOR_MAP = {"Costicine": "#FF0000", "Salsicce": "#00BFFF", "Braciole": "#000000"}
 PRODOTTI_ORDINE = ["Costicine", "Salsicce", "Braciole"]
 
@@ -83,11 +83,11 @@ with tab1:
                                   annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True, key=f"pie_{i}")
 
-# --- TAB 2: CARNE (GRAFICI SEPARATI E COLORI NUOVI) ---
+# --- TAB 2: CARNE (ORDINAMENTO RICHIESTO) ---
 with tab2:
     st.header("🍖 Produzione Carne")
     
-    with st.expander("➕ Inserisci Quantità"):
+    with st.expander("➕ Inserisci Nuova Quantità", expanded=False):
         with st.form("carne_form"):
             c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
             f_data = c1.selectbox("Giorno", DATE_SOGLIA)
@@ -100,6 +100,7 @@ with tab2:
     df_q = load_data(URL_MAGAZZINO)
     
     if not df_q.empty:
+        # Standardizzazione colonne
         if len(df_q.columns) >= 3:
             cols_names = ['Giorno', 'Prodotto', 'Quantita']
             if len(df_q.columns) >= 4: cols_names.append('Ora')
@@ -107,32 +108,30 @@ with tab2:
         
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
 
-        # 1. GRAFICO TOTALE SAGRA
+        # 1. GRAFICI PER GIORNO (ORA IN CIMA)
+        st.subheader("📅 Produzione per Singola Giornata")
+        giorni_con_dati = [d for d in DATE_SOGLIA if d in df_q['Giorno'].unique()]
+        
+        for giorno in giorni_con_dati:
+            df_giorno = df_q[df_q['Giorno'] == giorno].groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).reset_index().fillna(0)
+            
+            fig_giorno = px.bar(
+                df_giorno, x='Prodotto', y='Quantita', color='Prodotto', 
+                text_auto=True, title=f"Produzione del {giorno}",
+                color_discrete_map=COLOR_MAP,
+                category_orders={"Prodotto": PRODOTTI_ORDINE}
+            )
+            fig_giorno.update_layout(showlegend=False, height=300)
+            st.plotly_chart(fig_giorno, use_container_width=True, key=f"graph_{giorno}")
+
+        # 2. GRAFICO TOTALE SAGRA (ORA IN FONDO)
+        st.divider()
         st.subheader("📊 Totale Complessivo Sagra (Kg)")
         df_sum = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).reset_index().fillna(0)
         fig_bar = px.bar(df_sum, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
                          color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
+        fig_bar.update_layout(showlegend=False)
         st.plotly_chart(fig_bar, use_container_width=True)
-
-        # 2. GRAFICI SEPARATI PER GIORNO
-        st.divider()
-        st.subheader("📅 Dettaglio Produzione Giornaliera")
-        
-        # Filtriamo solo i giorni che hanno effettivamente dei dati
-        giorni_con_dati = [d for d in DATE_SOGLIA if d in df_q['Giorno'].unique()]
-        
-        for giorno in giorni_con_dati:
-            with st.expander(f"Dettaglio {giorno}", expanded=True):
-                df_giorno = df_q[df_q['Giorno'] == giorno].groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).reset_index().fillna(0)
-                
-                fig_giorno = px.bar(
-                    df_giorno, x='Prodotto', y='Quantita', color='Prodotto', 
-                    text_auto=True, title=f"Produzione del {giorno}",
-                    color_discrete_map=COLOR_MAP,
-                    category_orders={"Prodotto": PRODOTTI_ORDINE}
-                )
-                fig_giorno.update_layout(showlegend=False, height=350)
-                st.plotly_chart(fig_giorno, use_container_width=True, key=f"graph_{giorno}")
 
         # 3. GESTIONE ELIMINA
         st.divider()
