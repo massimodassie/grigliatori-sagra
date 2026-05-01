@@ -11,6 +11,7 @@ from datetime import datetime
 # --- 1. CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
 
+# Assicurati che SCRIPT_URL sia l'ultimo deployment dello script Google Apps
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlzO8HR87qEHeM5L6kDLWwctu_AehDK8yZZhhCh_bNLiLmPk3GTTJXKRHGeM0XBtxA/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
@@ -21,6 +22,7 @@ DATE_SOGLIA = ["Sabato 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio", "Ve
 PRODOTTI_ORDINE = ["Costicine", "Salsicce", "Braciole"]
 COLOR_MAP = {"Costicine": "#FF0000", "Salsicce": "#00BFFF", "Braciole": "#000000"}
 
+# --- 2. FUNZIONI DI COMUNICAZIONE ---
 def load_data(url):
     try:
         response = requests.get(f"{url}&nocache={time.time()}")
@@ -29,7 +31,7 @@ def load_data(url):
             df = pd.read_csv(io.StringIO(response.text))
             df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
             df.columns = [str(c).strip() for c in df.columns]
-            # Pulizia aggressiva: togliamo spazi ovunque
+            # Pulizia aggressiva degli spazi
             df = df.map(lambda x: str(x).strip() if pd.notnull(x) else x)
             return df
     except: pass
@@ -43,10 +45,14 @@ def save_data(sheet, data):
 
 def delete_row(sheet, row_index):
     try:
-        requests.get(f"{SCRIPT_URL}?sheet={sheet}&deleteRow={row_index}", timeout=10)
-        return True
+        # row_index 0 del dataframe è la riga 2 del foglio (riga 1 = intestazione)
+        google_row = row_index + 2
+        url = f"{SCRIPT_URL}?sheet={urllib.parse.quote(sheet)}&deleteRow={google_row}"
+        response = requests.get(url, timeout=10)
+        return response.status_code == 200
     except: return False
 
+# --- 3. INTERFACCIA ---
 st.title("🔥 Portale Grigliatori 2026")
 tab1, tab2, tab3 = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "⚙️ Admin"])
 
@@ -83,11 +89,11 @@ with tab1:
                                   annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 2: CARNE (DEBUG MODE) ---
+# --- TAB 2: CARNE ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     
-    with st.expander("➕ Inserisci Quantità"):
+    with st.expander("➕ Inserisci Nuova Quantità"):
         with st.form("carne_form"):
             c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
             f_data = c1.selectbox("Giorno", DATE_SOGLIA)
@@ -100,29 +106,24 @@ with tab2:
     df_q = load_data(URL_MAGAZZINO)
     
     if not df_q.empty:
-        # Forziamo i nomi delle colonne per sicurezza
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
 
-        # --- SEZIONE GRAFICI ---
+        # 1. Grafici Giornalieri
         st.subheader("📅 Dettaglio Giornaliero")
-        
-        # Logica di visualizzazione: Se una data in DATE_SOGLIA esiste nel foglio, mostra grafico
         for data_target in DATE_SOGLIA:
-            # Filtro "pulito"
+            # Filtro flessibile "Contains"
             df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
-            
             if not df_giorno.empty:
                 df_plot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-                
                 if df_plot['Quantita'].sum() > 0:
                     fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', 
-                                 text_auto=True, title=f"Produzione del {data_target}",
+                                 text_auto=True, title=f"Produzione: {data_target}",
                                  color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
                     fig.update_layout(showlegend=False, height=300)
                     st.plotly_chart(fig, use_container_width=True)
 
-        # --- TOTALE ---
+        # 2. Grafico Totale
         st.divider()
         st.subheader("📊 Totale Complessivo (Kg)")
         df_tot = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
@@ -130,13 +131,21 @@ with tab2:
                          color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
         st.plotly_chart(fig_tot, use_container_width=True)
 
-        # --- ELIMINA ---
+        # 3. Sezione Eliminazione
         st.divider()
         with st.expander("🗑️ Cancella Inserimenti"):
-            for i, row in df_q.tail(10).iloc[::-1].iterrows():
-                st.write(f"{row['Giorno']} - {row['Prodotto']} ({row['Quantita']}kg) [Riga {i+1}]")
-                if st.button("Elimina", key=f"del_{i}"):
-                    if delete_row("Quantità Grigliate", i + 1): st.rerun()
+            # Ricarichiamo gli ultimi dati
+            last_entries = df_q.tail(10).iloc[::-1]
+            for i, row in last_entries.iterrows():
+                c_info, c_btn = st.columns([8, 2])
+                c_info.write(f"**{row['Giorno']}** - {row['Prodotto']} ({int(row['Quantita'])}kg)")
+                if c_btn.button("Elimina", key=f"del_{i}"):
+                    if delete_row("Quantità Grigliate", i):
+                        st.success("Eliminato!")
+                        time.sleep(1)
+                        st.rerun()
+    else:
+        st.info("Nessun dato carne rilevato.")
 
 with tab3:
     st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
