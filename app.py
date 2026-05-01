@@ -8,7 +8,7 @@ import time
 import urllib.parse
 from datetime import datetime
 
-# --- CONFIGURAZIONE ---
+# --- 1. CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
 
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlzO8HR87qEHeM5L6kDLWwctu_AehDK8yZZhhCh_bNLiLmPk3GTTJXKRHGeM0XBtxA/exec"
@@ -24,12 +24,12 @@ COLOR_MAP = {"Costicine": "#FF0000", "Salsicce": "#00BFFF", "Braciole": "#000000
 def load_data(url):
     try:
         df = pd.read_csv(f"{url}&nocache={time.time()}")
-        # Rimuoviamo colonne completamente vuote o senza nome che CSV di Google a volte aggiunge
         df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
         df.columns = [str(c).strip() for c in df.columns]
+        # Pulizia universale di tutti i testi nel dataframe
+        df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         return df
-    except:
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 def save_data(sheet, data):
     try:
@@ -81,7 +81,7 @@ with tab1:
                                   annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 2: CARNE ---
+# --- TAB 2: CARNE (FIX GIORNALIERI) ---
 with tab2:
     st.header("🍖 Produzione Carne")
     
@@ -98,24 +98,31 @@ with tab2:
     df_q = load_data(URL_MAGAZZINO)
     
     if not df_q.empty and len(df_q.columns) >= 3:
-        # Assegnazione nomi colonne pulita (evita duplicati)
-        df_q = df_q.iloc[:, :4]
+        # Pulizia colonne e forzatura tipi
+        df_q = df_q.iloc[:, :4] 
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
 
-        # 1. GIORNALIERI
-        st.subheader("📅 Produzione per Giorno")
+        # 1. GRAFICI GIORNALIERI (IN ALTO)
+        st.subheader("📅 Dettaglio Produzione Giornaliera")
+        
+        # Troviamo i giorni nel foglio ignorando spazi bianchi
+        giorni_reali = df_q['Giorno'].unique().tolist()
+        
         for g in DATE_SOGLIA:
-            df_g = df_q[df_q['Giorno'].str.strip() == g].copy()
-            if not df_g.empty:
+            # Controllo flessibile della data
+            if g in giorni_reali:
+                df_g = df_q[df_q['Giorno'] == g].copy()
                 df_g_plot = df_g.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-                fig = px.bar(df_g_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
-                             title=f"Giorno: {g}", color_discrete_map=COLOR_MAP, 
-                             category_orders={"Prodotto": PRODOTTI_ORDINE})
-                fig.update_layout(showlegend=False, height=250)
-                st.plotly_chart(fig, use_container_width=True)
+                
+                if df_g_plot['Quantita'].sum() > 0:
+                    fig = px.bar(df_g_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
+                                 title=f"Giorno: {g}", color_discrete_map=COLOR_MAP, 
+                                 category_orders={"Prodotto": PRODOTTI_ORDINE})
+                    fig.update_layout(showlegend=False, height=250)
+                    st.plotly_chart(fig, use_container_width=True)
 
-        # 2. TOTALE
+        # 2. GRAFICO TOTALE (IN BASSO)
         st.divider()
         st.subheader("📊 Totale Sagra (Kg)")
         df_tot = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
@@ -134,7 +141,7 @@ with tab2:
                 if c3.button("Elimina", key=f"del_{i}"):
                     if delete_row("Quantità Grigliate", i + 1): st.rerun()
     else:
-        st.info("Nessun dato carne rilevato.")
+        st.info("Nessun dato carne rilevato. Inserisci una grigliata!")
 
 with tab3:
     st.link_button("📂 Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
