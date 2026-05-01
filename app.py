@@ -17,14 +17,12 @@ foglio_q = urllib.parse.quote("Quantità Grigliate")
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
 URL_MAGAZZINO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={foglio_q}"
 
-# Corretto in Sabato 09 maggio
 DATE_SOGLIA = [
     "Sabato 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio",
     "Venerdì 15 maggio", "Sabato 16 maggio", "Domenica 17 maggio",
     "Sabato 23 maggio", "Domenica 24 maggio"
 ]
 
-# Corretto il primo turno in Sabato 09 maggio per coerenza
 TURNI = [
     "Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", 
     "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", 
@@ -59,7 +57,8 @@ with tab1:
     grigliatori = [
         "Boscaratto Denis", "Botteon Marco", "Da Ronch Loris", "Dassie Massimo",
         "Disconzi Francesco", "Flavio", "Giacomo", "Micieli Mauro",
-        "Modolo Zanchetta Mirko", "Perencin Francesco", "Rossi Riccardo", "Sossai Gianluca"
+        "Modolo Zanchetta Mirko", "Perencin Davide", "Perencin Francesco", 
+        "Rossi Riccardo", "Sossai Gianluca"
     ]
     
     user = st.selectbox("Chi sei?", grigliatori)
@@ -72,7 +71,6 @@ with tab1:
     cols = st.columns(3)
     for i, t in enumerate(TURNI):
         with cols[i%3]:
-            # La key include l'utente per resettarsi al cambio nome
             if st.toggle(t, value=(t in miei_turni), key=f"t_{user}_{i}"):
                 if t not in miei_turni:
                     if save_data("Presenze", [user, t]):
@@ -87,10 +85,25 @@ with tab1:
             with cols_pie[i%3]:
                 count = len(df_p_clean[df_p_clean['Turno'] == t])
                 target = 5 if "Pranzo" in t else 6
-                fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, 
-                                        marker_colors=["#2a9d8f", "#eeeeee"], showlegend=False))
-                fig.update_layout(title=f"<b>{t}</b>", height=200, margin=dict(t=40,b=0,l=0,r=0),
-                                  annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False)])
+                
+                # LOGICA COLORE DINAMICO
+                # Verde se count >= target, altrimenti Rosso
+                colore_stato = "#2a9d8f" if count >= target else "#e63946"
+                
+                fig = go.Figure(go.Pie(
+                    values=[count, max(0, target-count)], 
+                    hole=0.6, 
+                    marker_colors=[colore_stato, "#eeeeee"], 
+                    showlegend=False,
+                    sort=False # Evita che i colori si invertano se il target è superato
+                ))
+                
+                fig.update_layout(
+                    title=f"<b>{t}</b>", 
+                    height=200, 
+                    margin=dict(t=40,b=0,l=0,r=0),
+                    annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False)]
+                )
                 st.plotly_chart(fig, use_container_width=True, key=f"p_chart_{i}")
 
 # --- TAB 2: CARNE ---
