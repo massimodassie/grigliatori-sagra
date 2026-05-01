@@ -47,20 +47,49 @@ TURNI = [
 DATA_FILE = "presenze_sagra.csv"
 CONTATTI_FILE = "contatti_grigliatori.csv"
 
-# --- FUNZIONI METEO ---
+# --- FUNZIONE METEO MIGLIORATA ---
 def get_weather(date_str):
+    if not date_str:
+        return "⏳ Previsioni a breve" # Messaggio più chiaro di N/D
     try:
+        # Chiamata all'API
         url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&daily=weathercode,temperature_2m_max&timezone=Europe%2遴Rome&start_date={date_str}&end_date={date_str}"
-        response = requests.get(url).json()
-        code = response['daily']['weathercode'][0]
-        temp = response['daily']['temperature_2m_max'][0]
+        response = requests.get(url, timeout=5).json()
         
-        # Icone semplici basate sui codici WMO
-        icons = {0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️", 45: "🌫️", 51: "🌦️", 61: "🌧️", 71: "❄️", 95: "⛈️"}
-        icon = icons.get(code, "🌡️")
-        return f"{icon} {temp}°C"
+        if 'daily' in response:
+            code = response['daily']['weathercode'][0]
+            temp = response['daily']['temperature_2m_max'][0]
+            
+            # Mappa codici WMO
+            icons = {
+                0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️", 
+                45: "🌫️", 48: "🌫️", 51: "🌦️", 53: "🌦️", 55: "🌦️",
+                61: "🌧️", 63: "🌧️", 65: "🌧️", 95: "⛈️"
+            }
+            icon = icons.get(code, "🌤️")
+            return f"{icon} {temp}°C"
+        else:
+            return "⏳ - " # Previsione non ancora disponibile
     except:
-        return "N/D"
+        return "🌡️ -"
+
+# --- CICLO TOGGLE CORRETTO ---
+col1, col2, col3 = st.columns(3)
+for i, turno in enumerate(TURNI):
+    target_col = [col1, col2, col3][i % 3]
+    with target_col:
+        # Estraiamo la parte della data (es. "Venerdì 09 maggio")
+        # Il trucco è prendere le prime 3 parole del nome del turno
+        parti_turno = turno.split(" ")
+        data_estratta = f"{parti_turno[0]} {parti_turno[1]} {parti_turno[2]}"
+        
+        data_iso = DATE_SOGLIA.get(data_estratta, "")
+        info_meteo = get_weather(data_iso)
+        
+        st.caption(f"Meteo: {info_meteo}") # Usiamo caption per un testo più piccolo ed elegante
+        chiave = f"tgl_{nome_sel}_{turno}"
+        st.toggle(turno, value=(turno in turni_attivi), key=chiave,
+                  on_change=update_presence, args=(nome_sel, turno, chiave))
 
 # --- ALTRE FUNZIONI (DB) ---
 def load_data(file):
