@@ -79,7 +79,6 @@ st.title("🔥 Portale Grigliatori 2026")
 tab1, tab2, tab3 = st.tabs(["👥 Presenze & Calendario", "🍖 Monitor Carne", "⚙️ Admin"])
 
 with tab1:
-    # Aggiunto Vazzoler Antonio alla lista
     grigliatori = sorted(["Boscaratto Denis", "Botteon Marco", "Da Ronch Loris", "Dassie Massimo", "Disconzi Francesco", "Flavio", "Giacomo", "Micieli Mauro", "Modolo Zanchetta Mirko", "Perencin Davide", "Perencin Francesco", "Rossi Riccardo", "Sossai Gianluca", "Vazzoler Antonio"])
     user = st.selectbox("Chi sei?", grigliatori)
     
@@ -111,23 +110,32 @@ with tab1:
 
     st.divider()
     if not df_p.empty:
-        st.subheader("📊 Stato Copertura")
+        st.subheader("📊 Stato Copertura & Team")
         df_count = df_p.drop_duplicates().copy()
         cp = st.columns(3)
         for i, t in enumerate(turni_lista):
             with cp[i%3]:
-                count = len(df_count[df_count['Turno'] == t])
+                # Calcolo copertura
+                presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
+                count = len(presenti)
                 target = 5 if "Pranzo" in t else 6
+                
+                # Grafico a torta
                 fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, marker_colors=["#2a9d8f" if count >= target else "#FF0000", "#eeeeee"], showlegend=False))
-                fig.update_layout(title=f"<b>{t}</b>", height=180, margin=dict(t=30,b=0,l=0,r=0))
+                fig.update_layout(title=f"<b>{t}</b>", height=180, margin=dict(t=30,b=0,l=0,r=0), annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Elenco nomi presenti (La tua richiesta)
+                if count > 0:
+                    st.write(f"👥 **Presenti:**")
+                    for nome in sorted(presenti):
+                        st.write(f"• {nome}")
+                else:
+                    st.write("⚠️ *Ancora nessuno*")
 
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
-    df_p_carne = load_data(URL_PRESENZE) # Carichiamo le presenze anche qui per mostrarle sotto i grafici
-    if not df_p_carne.empty:
-        df_p_carne.columns = ['Nome', 'Turno'] + list(df_p_carne.columns[2:])
-
+    
     with st.expander("➕ Inserisci Nuova Quantità"):
         with st.form("carne_form"):
             c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
@@ -147,26 +155,12 @@ with tab2:
         st.subheader("📅 Dettaglio Giornaliero")
         for data_target in DATE_SOGLIA:
             df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
-            
             if not df_giorno.empty:
                 df_plot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
                 if df_plot['Quantita'].sum() > 0:
                     fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
                     fig.update_layout(showlegend=False, height=300)
                     st.plotly_chart(fig, use_container_width=True)
-                    
-                    # --- SEZIONE NOMI PRESENTI SOTTO IL GRAFICO ---
-                    if not df_p_carne.empty:
-                        presenti_pranzo = df_p_carne[df_p_carne['Turno'] == f"{data_target} - Pranzo"]['Nome'].unique()
-                        presenti_cena = df_p_carne[df_p_carne['Turno'] == f"{data_target} - Cena"]['Nome'].unique()
-                        
-                        col_p, col_c = st.columns(2)
-                        with col_p:
-                            if len(presenti_pranzo) > 0:
-                                st.caption(f"☀️ **Presenti Pranzo:** {', '.join(presenti_pranzo)}")
-                        with col_c:
-                            if len(presenti_cena) > 0:
-                                st.caption(f"🌙 **Presenti Cena:** {', '.join(presenti_cena)}")
                     st.divider()
         
         st.subheader("📊 Totale Complessivo (Kg)")
