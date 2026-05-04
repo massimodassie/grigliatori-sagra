@@ -124,14 +124,21 @@ with tab1:
                 count = len(presenti)
                 target = 5 if "Pranzo" in t else 6
                 
-                # Logica colori avanzata
-                if count <= target:
+                # --- LOGICA COLORI RICHIESTA ---
+                if count < target:
+                    # SOTTO TARGET: Rosso per i presenti, Grigio per i mancanti
                     values = [count, target - count]
-                    colors = ["#2a9d8f", "#eeeeee"] # Verde e Grigio
+                    colors = ["#FF0000", "#eeeeee"] 
                     labels = ["Presenti", "Mancanti"]
+                elif count == target:
+                    # TARGET RAGGIUNTO: Tutto Verde
+                    values = [count]
+                    colors = ["#2a9d8f"]
+                    labels = ["Target Raggiunto"]
                 else:
+                    # OVER TARGET: Verde per il target, Blu per gli extra
                     values = [target, count - target]
-                    colors = ["#2a9d8f", "#0000FF"] # Verde e Blu Extra
+                    colors = ["#2a9d8f", "#0000FF"]
                     labels = ["Target", "Extra"]
                 
                 perc = int((count / target) * 100)
