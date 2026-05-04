@@ -79,7 +79,13 @@ st.title("🔥 Portale Grigliatori 2026")
 tab1, tab2, tab3 = st.tabs(["👥 Presenze & Calendario", "🍖 Monitor Carne", "⚙️ Admin"])
 
 with tab1:
-    grigliatori = sorted(["Boscaratto Denis", "Botteon Marco", "Da Ronch Loris", "Dassie Massimo", "Disconzi Francesco", "Flavio", "Giacomo", "Micieli Mauro", "Modolo Zanchetta Mirko", "Perencin Davide", "Perencin Francesco", "Rossi Riccardo", "Sossai Gianluca", "Vazzoler Antonio"])
+    # Aggiunto Granzotto Giacomo e ordinamento alfabetico
+    grigliatori = sorted([
+        "Boscaratto Denis", "Botteon Marco", "Da Ronch Loris", "Dassie Massimo", 
+        "Disconzi Francesco", "Flavio", "Giacomo", "Granzotto Giacomo", 
+        "Micieli Mauro", "Modolo Zanchetta Mirko", "Perencin Davide", 
+        "Perencin Francesco", "Rossi Riccardo", "Sossai Gianluca", "Vazzoler Antonio"
+    ])
     user = st.selectbox("Chi sei?", grigliatori)
     
     df_p = load_data(URL_PRESENZE)
@@ -115,17 +121,14 @@ with tab1:
         cp = st.columns(3)
         for i, t in enumerate(turni_lista):
             with cp[i%3]:
-                # Calcolo copertura
                 presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
                 count = len(presenti)
                 target = 5 if "Pranzo" in t else 6
                 
-                # Grafico a torta
                 fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, marker_colors=["#2a9d8f" if count >= target else "#FF0000", "#eeeeee"], showlegend=False))
                 fig.update_layout(title=f"<b>{t}</b>", height=180, margin=dict(t=30,b=0,l=0,r=0), annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Elenco nomi presenti (La tua richiesta)
                 if count > 0:
                     st.write(f"👥 **Presenti:**")
                     for nome in sorted(presenti):
@@ -135,7 +138,6 @@ with tab1:
 
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
-    
     with st.expander("➕ Inserisci Nuova Quantità"):
         with st.form("carne_form"):
             c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
