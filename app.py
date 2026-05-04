@@ -11,7 +11,8 @@ from datetime import datetime
 # --- 1. CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
 
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzZ6rlwkixXk4d1JF5QLfsFGK_eeYtbyxoDRf7OmDg3Qffl6h6-XItgRoI5Cp6HMAUU/exec"
+# URL Aggiornato con il tuo nuovo deployment
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycby7yJ-jjJYworKTL9w20Er0w_Av3U1xqUvLQi0oGlrYy70Sg1xK6BJysNGZIZlJ0DtM/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
@@ -50,7 +51,6 @@ def delete_row(sheet, row_index):
         return response.status_code == 200
     except: return False
 
-# Nuova funzione per rinominare ovunque
 def rename_grigliatore(vecchio_nome, nuovo_nome):
     try:
         url = f"{SCRIPT_URL}?renameOld={urllib.parse.quote(vecchio_nome)}&renameNew={urllib.parse.quote(nuovo_nome)}"
@@ -145,7 +145,7 @@ with tab1:
                 if count > 0:
                     for nome in sorted(presenti): st.write(f"• {nome}")
 
-# --- TAB 2: CARNE (Invariata) ---
+# --- TAB 2: CARNE ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -171,22 +171,20 @@ with tab2:
                     fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP)
                     st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 3: GESTIONE TEAM (AGGIORNATA CON MODIFICA) ---
+# --- TAB 3: GESTIONE TEAM ---
 with tab3:
     st.header("⚙️ Gestione Elenco Grigliatori")
     
-    # 1. AGGIUNGI
     with st.expander("➕ Aggiungi un nuovo grigliatore"):
         nuovo_nome = st.text_input("Nome e Cognome per inserimento")
         if st.button("Salva Nuovo"):
             if nuovo_nome and save_data("ListaGrigliatori", [nuovo_nome]):
                 st.success("Aggiunto!"); time.sleep(1); st.rerun()
     
-    # 2. MODIFICA (La tua richiesta)
     with st.expander("📝 Modifica nome esistente (Senza perdere i turni)"):
         if not df_nomi.empty:
             vecchio = st.selectbox("Seleziona chi vuoi rinominare", lista_grigliatori)
-            nuovo = st.text_input("Inserisci il nuovo nome corretto (es. aggiungi cognome)")
+            nuovo = st.text_input("Inserisci il nuovo nome corretto")
             if st.button("Aggiorna Nome Ovunque"):
                 if vecchio and nuovo:
                     with st.spinner("Aggiornamento in corso..."):
@@ -196,7 +194,6 @@ with tab3:
                 else:
                     st.warning("Inserisci il nuovo nome!")
 
-    # 3. ELIMINA
     with st.expander("🗑️ Rimuovi definitivamente un grigliatore"):
         if not df_nomi.empty:
             for idx, row in df_nomi.iterrows():
