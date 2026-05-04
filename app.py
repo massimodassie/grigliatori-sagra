@@ -75,12 +75,9 @@ END:VEVENT
 END:VCALENDAR"""
     return ics_content
 
-# --- 3. CARICAMENTO NOMI DINAMICO ---
+# --- 3. CARICAMENTO NOMI ---
 df_nomi = load_data(URL_LISTA_NOMI)
-if not df_nomi.empty:
-    lista_grigliatori = sorted(df_nomi['Nome'].unique().tolist())
-else:
-    lista_grigliatori = ["Caricamento..."]
+lista_grigliatori = sorted(df_nomi['Nome'].unique().tolist()) if not df_nomi.empty else ["Caricamento..."]
 
 # --- 4. INTERFACCIA ---
 st.title("🔥 Portale Grigliatori 2026")
@@ -109,7 +106,7 @@ with tab1:
 
     if miei_turni:
         st.divider()
-        st.subheader("📅 Calendario")
+        st.subheader("📅 Aggiungi al Calendario")
         c_cal = st.columns(2)
         for idx, turno in enumerate(miei_turni):
             with c_cal[idx % 2]:
@@ -126,11 +123,27 @@ with tab1:
                 presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
                 count = len(presenti)
                 target = 5 if "Pranzo" in t else 6
-                fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, marker_colors=["#2a9d8f" if count >= target else "#FF0000", "#eeeeee"], showlegend=False))
-                fig.update_layout(title=f"<b>{t}</b>", height=180, margin=dict(t=30,b=0,l=0,r=0), annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
+                
+                # Logica colori avanzata
+                if count <= target:
+                    values = [count, target - count]
+                    colors = ["#2a9d8f", "#eeeeee"] # Verde e Grigio
+                    labels = ["Presenti", "Mancanti"]
+                else:
+                    values = [target, count - target]
+                    colors = ["#2a9d8f", "#0000FF"] # Verde e Blu Extra
+                    labels = ["Target", "Extra"]
+                
+                perc = int((count / target) * 100)
+                
+                fig = go.Figure(go.Pie(values=values, hole=0.6, marker_colors=colors, showlegend=False, textinfo='none'))
+                fig.update_layout(title=f"<b>{t}</b>", height=220, margin=dict(t=40,b=0,l=0,r=0),
+                                  annotations=[dict(text=f"{perc}%<br><span style='font-size:12px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=18, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True)
+                
                 if count > 0:
                     for nome in sorted(presenti): st.write(f"• {nome}")
+                else: st.write("⚠️ *Nessuno*")
 
 # --- TAB 2: CARNE ---
 with tab2:
@@ -166,19 +179,15 @@ with tab2:
                 if c_btn.button("Elimina", key=f"del_{i}"):
                     if delete_row("Quantità Grigliate", i): st.rerun()
 
-# --- TAB 3: GESTIONE TEAM (ADMIN) ---
+# --- TAB 3: GESTIONE TEAM ---
 with tab3:
     st.header("⚙️ Gestione Elenco Grigliatori")
-    
-    # 1. AGGIUNGI NOME
     with st.expander("➕ Aggiungi un nuovo grigliatore"):
         nuovo_nome = st.text_input("Nome e Cognome")
         if st.button("Salva Nuovo Grigliatore"):
-            if nuovo_nome:
-                if save_data("ListaGrigliatori", [nuovo_nome]):
-                    st.success(f"{nuovo_nome} aggiunto!"); time.sleep(1); st.rerun()
+            if nuovo_nome and save_data("ListaGrigliatori", [nuovo_nome]):
+                st.success(f"{nuovo_nome} aggiunto!"); time.sleep(1); st.rerun()
     
-    # 2. ELIMINA NOME
     with st.expander("🗑️ Rimuovi un grigliatore"):
         if not df_nomi.empty:
             for idx, row in df_nomi.iterrows():
@@ -187,6 +196,3 @@ with tab3:
                 if col2.button("Elimina", key=f"del_grig_{idx}"):
                     if delete_row("ListaGrigliatori", idx):
                         st.success("Rimosso!"); time.sleep(1); st.rerun()
-    
-    st.divider()
-    st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
