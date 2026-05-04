@@ -16,6 +16,7 @@ SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
 URL_MAGAZZINO = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=" + urllib.parse.quote("Quantità Grigliate")
+URL_LISTA_NOMI = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=ListaGrigliatori"
 
 DATE_SOGLIA = ["Sabato 09 maggio", "Sabato 10 maggio", "Domenica 10 maggio", "Venerdì 15 maggio", "Sabato 16 maggio", "Domenica 17 maggio", "Sabato 23 maggio", "Domenica 24 maggio"]
 PRODOTTI_ORDINE = ["Costicine", "Salsicce", "Braciole"]
@@ -74,19 +75,20 @@ END:VEVENT
 END:VCALENDAR"""
     return ics_content
 
-# --- 3. INTERFACCIA ---
-st.title("🔥 Portale Grigliatori 2026")
-tab1, tab2, tab3 = st.tabs(["👥 Presenze & Calendario", "🍖 Monitor Carne", "⚙️ Admin"])
+# --- 3. CARICAMENTO NOMI DINAMICO ---
+df_nomi = load_data(URL_LISTA_NOMI)
+if not df_nomi.empty:
+    lista_grigliatori = sorted(df_nomi['Nome'].unique().tolist())
+else:
+    lista_grigliatori = ["Caricamento..."]
 
+# --- 4. INTERFACCIA ---
+st.title("🔥 Portale Grigliatori 2026")
+tab1, tab2, tab3 = st.tabs(["👥 Presenze & Calendario", "🍖 Monitor Carne", "⚙️ Gestione Team"])
+
+# --- TAB 1: PRESENZE ---
 with tab1:
-    # Aggiunto Granzotto Giacomo e ordinamento alfabetico
-    grigliatori = sorted([
-        "Boscaratto Denis", "Botteon Marco", "Da Ronch Loris", "Dassie Massimo", 
-        "Disconzi Francesco", "Flavio", "Giacomo", "Granzotto Giacomo", 
-        "Micieli Mauro", "Modolo Zanchetta Mirko", "Perencin Davide", 
-        "Perencin Francesco", "Rossi Riccardo", "Sossai Gianluca", "Vazzoler Antonio"
-    ])
-    user = st.selectbox("Chi sei?", grigliatori)
+    user = st.selectbox("Chi sei?", lista_grigliatori)
     
     df_p = load_data(URL_PRESENZE)
     miei_turni = []
@@ -107,7 +109,7 @@ with tab1:
 
     if miei_turni:
         st.divider()
-        st.subheader("📅 Aggiungi al Calendario del Telefono")
+        st.subheader("📅 Calendario")
         c_cal = st.columns(2)
         for idx, turno in enumerate(miei_turni):
             with c_cal[idx % 2]:
@@ -124,18 +126,13 @@ with tab1:
                 presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
                 count = len(presenti)
                 target = 5 if "Pranzo" in t else 6
-                
                 fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, marker_colors=["#2a9d8f" if count >= target else "#FF0000", "#eeeeee"], showlegend=False))
                 fig.update_layout(title=f"<b>{t}</b>", height=180, margin=dict(t=30,b=0,l=0,r=0), annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=18, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True)
-                
                 if count > 0:
-                    st.write(f"👥 **Presenti:**")
-                    for nome in sorted(presenti):
-                        st.write(f"• {nome}")
-                else:
-                    st.write("⚠️ *Ancora nessuno*")
+                    for nome in sorted(presenti): st.write(f"• {nome}")
 
+# --- TAB 2: CARNE ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -153,22 +150,13 @@ with tab2:
     if not df_q.empty:
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
-        
-        st.subheader("📅 Dettaglio Giornaliero")
         for data_target in DATE_SOGLIA:
             df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
             if not df_giorno.empty:
                 df_plot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
                 if df_plot['Quantita'].sum() > 0:
-                    fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
-                    fig.update_layout(showlegend=False, height=300)
+                    fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP)
                     st.plotly_chart(fig, use_container_width=True)
-                    st.divider()
-        
-        st.subheader("📊 Totale Complessivo (Kg)")
-        df_tot = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-        fig_tot = px.bar(df_tot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, color_discrete_map=COLOR_MAP, category_orders={"Prodotto": PRODOTTI_ORDINE})
-        st.plotly_chart(fig_tot, use_container_width=True)
 
         with st.expander("🗑️ Cancella Inserimenti"):
             last_entries = df_q.tail(10).iloc[::-1]
@@ -176,8 +164,29 @@ with tab2:
                 c_info, c_btn = st.columns([8, 2])
                 c_info.write(f"**{row['Giorno']}** - {row['Prodotto']} ({int(row['Quantita'])}kg)")
                 if c_btn.button("Elimina", key=f"del_{i}"):
-                    if delete_row("Quantità Grigliate", i):
-                        st.success("Riga eliminata!"); time.sleep(1); st.rerun()
+                    if delete_row("Quantità Grigliate", i): st.rerun()
 
+# --- TAB 3: GESTIONE TEAM (ADMIN) ---
 with tab3:
+    st.header("⚙️ Gestione Elenco Grigliatori")
+    
+    # 1. AGGIUNGI NOME
+    with st.expander("➕ Aggiungi un nuovo grigliatore"):
+        nuovo_nome = st.text_input("Nome e Cognome")
+        if st.button("Salva Nuovo Grigliatore"):
+            if nuovo_nome:
+                if save_data("ListaGrigliatori", [nuovo_nome]):
+                    st.success(f"{nuovo_nome} aggiunto!"); time.sleep(1); st.rerun()
+    
+    # 2. ELIMINA NOME
+    with st.expander("🗑️ Rimuovi un grigliatore"):
+        if not df_nomi.empty:
+            for idx, row in df_nomi.iterrows():
+                col1, col2 = st.columns([8, 2])
+                col1.write(row['Nome'])
+                if col2.button("Elimina", key=f"del_grig_{idx}"):
+                    if delete_row("ListaGrigliatori", idx):
+                        st.success("Rimosso!"); time.sleep(1); st.rerun()
+    
+    st.divider()
     st.link_button("📂 Apri Foglio Google", f"https://docs.google.com/spreadsheets/d/{SHEET_ID}")
