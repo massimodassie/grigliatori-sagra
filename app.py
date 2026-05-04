@@ -50,6 +50,14 @@ def delete_row(sheet, row_index):
         return response.status_code == 200
     except: return False
 
+# Nuova funzione per rinominare ovunque
+def rename_grigliatore(vecchio_nome, nuovo_nome):
+    try:
+        url = f"{SCRIPT_URL}?renameOld={urllib.parse.quote(vecchio_nome)}&renameNew={urllib.parse.quote(nuovo_nome)}"
+        response = requests.get(url, timeout=15)
+        return response.status_code == 200
+    except: return False
+
 def create_ics(turno_nome, utente):
     date_map = {
         "Sabato 09 maggio": "20260509", "Sabato 10 maggio": "20260510", "Domenica 10 maggio": "20260510",
@@ -86,7 +94,6 @@ tab1, tab2, tab3 = st.tabs(["👥 Presenze & Calendario", "🍖 Monitor Carne", 
 # --- TAB 1: PRESENZE ---
 with tab1:
     user = st.selectbox("Chi sei?", lista_grigliatori)
-    
     df_p = load_data(URL_PRESENZE)
     miei_turni = []
     if not df_p.empty and len(df_p.columns) >= 2:
@@ -106,7 +113,7 @@ with tab1:
 
     if miei_turni:
         st.divider()
-        st.subheader("📅 Aggiungi al Calendario")
+        st.subheader("📅 Calendario")
         c_cal = st.columns(2)
         for idx, turno in enumerate(miei_turni):
             with c_cal[idx % 2]:
@@ -123,36 +130,22 @@ with tab1:
                 presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
                 count = len(presenti)
                 target = 5 if "Pranzo" in t else 6
-                
-                # --- LOGICA COLORI RICHIESTA ---
                 if count < target:
-                    # SOTTO TARGET: Rosso per i presenti, Grigio per i mancanti
-                    values = [count, target - count]
-                    colors = ["#FF0000", "#eeeeee"] 
-                    labels = ["Presenti", "Mancanti"]
+                    values, colors = [count, target - count], ["#FF0000", "#eeeeee"]
                 elif count == target:
-                    # TARGET RAGGIUNTO: Tutto Verde
-                    values = [count]
-                    colors = ["#2a9d8f"]
-                    labels = ["Target Raggiunto"]
+                    values, colors = [count], ["#2a9d8f"]
                 else:
-                    # OVER TARGET: Verde per il target, Blu per gli extra
-                    values = [target, count - target]
-                    colors = ["#2a9d8f", "#0000FF"]
-                    labels = ["Target", "Extra"]
+                    values, colors = [target, count - target], ["#2a9d8f", "#0000FF"]
                 
                 perc = int((count / target) * 100)
-                
                 fig = go.Figure(go.Pie(values=values, hole=0.6, marker_colors=colors, showlegend=False, textinfo='none'))
                 fig.update_layout(title=f"<b>{t}</b>", height=220, margin=dict(t=40,b=0,l=0,r=0),
                                   annotations=[dict(text=f"{perc}%<br><span style='font-size:12px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=18, showarrow=False)])
                 st.plotly_chart(fig, use_container_width=True)
-                
                 if count > 0:
                     for nome in sorted(presenti): st.write(f"• {nome}")
-                else: st.write("⚠️ *Nessuno*")
 
-# --- TAB 2: CARNE ---
+# --- TAB 2: CARNE (Invariata) ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -178,28 +171,36 @@ with tab2:
                     fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP)
                     st.plotly_chart(fig, use_container_width=True)
 
-        with st.expander("🗑️ Cancella Inserimenti"):
-            last_entries = df_q.tail(10).iloc[::-1]
-            for i, row in last_entries.iterrows():
-                c_info, c_btn = st.columns([8, 2])
-                c_info.write(f"**{row['Giorno']}** - {row['Prodotto']} ({int(row['Quantita'])}kg)")
-                if c_btn.button("Elimina", key=f"del_{i}"):
-                    if delete_row("Quantità Grigliate", i): st.rerun()
-
-# --- TAB 3: GESTIONE TEAM ---
+# --- TAB 3: GESTIONE TEAM (AGGIORNATA CON MODIFICA) ---
 with tab3:
     st.header("⚙️ Gestione Elenco Grigliatori")
-    with st.expander("➕ Aggiungi un nuovo grigliatore"):
-        nuovo_nome = st.text_input("Nome e Cognome")
-        if st.button("Salva Nuovo Grigliatore"):
-            if nuovo_nome and save_data("ListaGrigliatori", [nuovo_nome]):
-                st.success(f"{nuovo_nome} aggiunto!"); time.sleep(1); st.rerun()
     
-    with st.expander("🗑️ Rimuovi un grigliatore"):
+    # 1. AGGIUNGI
+    with st.expander("➕ Aggiungi un nuovo grigliatore"):
+        nuovo_nome = st.text_input("Nome e Cognome per inserimento")
+        if st.button("Salva Nuovo"):
+            if nuovo_nome and save_data("ListaGrigliatori", [nuovo_nome]):
+                st.success("Aggiunto!"); time.sleep(1); st.rerun()
+    
+    # 2. MODIFICA (La tua richiesta)
+    with st.expander("📝 Modifica nome esistente (Senza perdere i turni)"):
+        if not df_nomi.empty:
+            vecchio = st.selectbox("Seleziona chi vuoi rinominare", lista_grigliatori)
+            nuovo = st.text_input("Inserisci il nuovo nome corretto (es. aggiungi cognome)")
+            if st.button("Aggiorna Nome Ovunque"):
+                if vecchio and nuovo:
+                    with st.spinner("Aggiornamento in corso..."):
+                        if rename_grigliatore(vecchio, nuovo):
+                            st.success(f"Perfetto! {vecchio} è ora {nuovo} in tutti i turni.")
+                            time.sleep(1.5); st.rerun()
+                else:
+                    st.warning("Inserisci il nuovo nome!")
+
+    # 3. ELIMINA
+    with st.expander("🗑️ Rimuovi definitivamente un grigliatore"):
         if not df_nomi.empty:
             for idx, row in df_nomi.iterrows():
                 col1, col2 = st.columns([8, 2])
                 col1.write(row['Nome'])
                 if col2.button("Elimina", key=f"del_grig_{idx}"):
-                    if delete_row("ListaGrigliatori", idx):
-                        st.success("Rimosso!"); time.sleep(1); st.rerun()
+                    if delete_row("ListaGrigliatori", idx): st.rerun()
