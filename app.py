@@ -11,7 +11,6 @@ from datetime import datetime
 # --- 1. CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
 
-# URL del tuo script aggiornato
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycby7yJ-jjJYworKTL9w20Er0w_Av3U1xqUvLQi0oGlrYy70Sg1xK6BJysNGZIZlJ0DtM/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
@@ -78,21 +77,7 @@ def create_ics(turno_nome, utente):
     }
     giorno_testo = turno_nome.split(" - ")[0]
     data_iso = date_map.get(giorno_testo, "20260501")
-    ics_content = f"""BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Grigliatori Sagra//IT
-BEGIN:VEVENT
-SUMMARY:🔥 Turno Griglia: {turno_nome}
-DTSTART;TZID=Europe/Rome:{data_iso}T090000
-DTEND;TZID=Europe/Rome:{data_iso}T100000
-DESCRIPTION:Promemoria per il tuo turno alla sagra: {turno_nome}
-BEGIN:VALARM
-TRIGGER:PT0M
-ACTION:DISPLAY
-DESCRIPTION:Sveglia Turno Griglia
-END:VALARM
-END:VEVENT
-END:VCALENDAR"""
+    ics_content = f"""BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Grigliatori Sagra//IT\nBEGIN:VEVENT\nSUMMARY:🔥 Turno Griglia: {turno_nome}\nDTSTART;TZID=Europe/Rome:{data_iso}T090000\nDTEND;TZID=Europe/Rome:{data_iso}T100000\nDESCRIPTION:Promemoria sagra: {turno_nome}\nBEGIN:VALARM\nTRIGGER:PT0M\nACTION:DISPLAY\nDESCRIPTION:Sveglia Turno Griglia\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR"""
     return ics_content
 
 # --- 3. CARICAMENTO NOMI ---
@@ -113,15 +98,9 @@ with tab1:
         miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist()
     
     turni_lista = [
-        "Sabato 09 maggio - Cena", 
-        "Domenica 10 maggio - Pranzo", 
-        "Domenica 10 maggio - Cena", 
-        "Venerdì 15 maggio - Cena della costata", 
-        "Sabato 16 maggio - Cena", 
-        "Domenica 17 maggio - Cena", 
-        "Sabato 23 maggio - Cena", 
-        "Domenica 24 maggio - Pranzo", 
-        "Domenica 24 maggio - Cena"
+        "Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", 
+        "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", 
+        "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"
     ]
     
     st.subheader("Segna i tuoi turni")
@@ -147,74 +126,52 @@ with tab1:
 
     st.divider()
     if not df_p.empty:
-        st.subheader("📊 Stato Copertura & Team")
+        st.subheader("📊 Stato Copertura Team")
         df_count = df_p.drop_duplicates().copy()
         
-        # Sfondi alternati per giorno (Grigio-azzurro chiaro e Bianco)
-        giorni_colori = {
-            "Sabato 09 maggio": "#f1f3f5",   
-            "Domenica 10 maggio": "#ffffff", 
-            "Venerdì 15 maggio": "#f1f3f5",
-            "Sabato 16 maggio": "#ffffff",
-            "Domenica 17 maggio": "#f1f3f5",
-            "Sabato 23 maggio": "#ffffff",
-            "Domenica 24 maggio": "#f1f3f5"
-        }
-
+        # Gestione visualizzazione cronologica con separatori
+        last_date = ""
         for i, t in enumerate(turni_lista):
-            giorno_chiave = t.split(" - ")[0]
-            colore_sfondo = giorni_colori.get(giorno_chiave, "#ffffff")
+            current_date = t.split(" - ")[0]
             
-            # 1. Creiamo la scheda con bordo nativo
-            with st.container(border=True):
-                # 2. Azzeriamo il gap tra colonne per fondere lo sfondo in un unico blocco
-                col_grafico, col_nomi = st.columns([1, 1], gap="none")
-                
-                presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
-                count = len(presenti)
-                target = 5 if "Pranzo" in t else 6
-                
-                if count < target:
-                    values, colors = [count, target - count], ["#FF0000", "#eeeeee"]
-                elif count == target:
-                    values, colors = [count], ["#2a9d8f"]
-                else:
-                    values, colors = [target, count - target], ["#2a9d8f", "#0000FF"]
-                
-                perc = int((count / target) * 100)
-                
-                # Sfondo Grafico
-                with col_grafico:
-                    fig = go.Figure(go.Pie(values=values, hole=0.6, marker_colors=colors, showlegend=False, textinfo='none'))
-                    fig.update_layout(
-                        title=f"<b>{t}</b>", 
-                        height=180, 
-                        margin=dict(t=35, b=10, l=10, r=10),
-                        paper_bgcolor=colore_sfondo, # Applica lo sfondo al grafico
-                        plot_bgcolor=colore_sfondo,
-                        annotations=[dict(text=f"{perc}%<br><span style='font-size:11px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=16, showarrow=False)]
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # Sfondo Lista Nomi
-                with col_nomi:
-                    # Generiamo un div HTML compatto che colora l'intera area di testo
-                    nomi_html = f"""
-                    <div style="background-color: {colore_sfondo}; padding: 15px; border-radius: 4px; height: 180px; box-sizing: border-box; overflow-y: auto;">
-                        <p style="margin-top:0px; font-weight:bold; color:#495057; margin-bottom:8px; font-size:14px;">👨‍🍳 Grigliatori del turno:</p>
-                    """
-                    if count > 0:
-                        for nome in sorted(presenti): 
-                            nomi_html += f"<p style='margin:3px 0; color:#212529; font-size:14px; font-family:sans-serif;'>• {nome}</p>"
-                    else: 
-                        nomi_html += "<p style='margin:3px 0; color:#868e96; font-style: italic; font-size:14px; font-family:sans-serif;'>⚠️ Nessun grigliatore registrato</p>"
-                    nomi_html += "</div>"
-                    
-                    st.markdown(nomi_html, unsafe_allow_html=True)
+            # Se cambiamo giorno, mettiamo un'intestazione visibile
+            if current_date != last_date:
+                st.markdown(f"""<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin: 20px 0 10px 0; border-left: 5px solid #ff4b4b;">
+                                <h3 style="margin:0; color:#31333F;">📅 {current_date}</h3>
+                             </div>""", unsafe_allow_html=True)
+                last_date = current_date
 
-# --- TAB 2: CARNE ---
+            # Layout del turno
+            col_graf, col_txt = st.columns([1, 1])
+            
+            presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
+            count = len(presenti)
+            target = 5 if "Pranzo" in t else 6
+            
+            # Colori Grafico
+            if count < target: values, colors = [count, target - count], ["#FF0000", "#eeeeee"]
+            elif count == target: values, colors = [count], ["#2a9d8f"]
+            else: values, colors = [target, count - target], ["#2a9d8f", "#0000FF"]
+            
+            perc = int((count / target) * 100)
+            
+            with col_graf:
+                fig = go.Figure(go.Pie(values=values, hole=0.6, marker_colors=colors, showlegend=False, textinfo='none'))
+                fig.update_layout(title=f"<b>{t.split(' - ')[1]}</b>", height=180, margin=dict(t=30, b=10, l=10, r=10),
+                                  annotations=[dict(text=f"{perc}%<br><span style='font-size:11px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=16, showarrow=False)])
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col_txt:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if count > 0:
+                    for nome in sorted(presenti): st.write(f"• {nome}")
+                else: st.write("⚠️ *Nessuno ancora*")
+            
+            st.markdown("---") # Linea di separazione tra turni dello stesso giorno
+
+# --- TAB 2 & 3 (Restano invariate come prima) ---
 with tab2:
-    st.header("🍖 Monitoraggio Production")
+    st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
         with st.form("carne_form"):
             c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
@@ -225,7 +182,6 @@ with tab2:
             if st.form_submit_button("Salva 📝"):
                 if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]): 
                     st.success("Dato salvato!"); time.sleep(1); st.rerun()
-
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
@@ -238,30 +194,23 @@ with tab2:
                     fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP)
                     st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 3: GESTIONE TEAM ---
 with tab3:
-    st.header("⚙️ Gestione Elenco Grigliatori")
-    
+    st.header("⚙️ Gestione Team")
     with st.expander("➕ Aggiungi un nuovo grigliatore"):
         nuovo_nome = st.text_input("Nome e Cognome per inserimento")
         if st.button("Salva Nuovo"):
             if nuovo_nome and save_data("ListaGrigliatori", [nuovo_nome]):
                 st.success("Aggiunto!"); time.sleep(1); st.rerun()
-    
-    with st.expander("📝 Modifica nome esistente (Senza perdere i turni)"):
+    with st.expander("📝 Modifica nome esistente"):
         if not df_nomi.empty:
             vecchio = st.selectbox("Seleziona chi vuoi rinominare", lista_grigliatori)
             nuovo = st.text_input("Inserisci il nuovo nome corretto")
             if st.button("Aggiorna Nome Ovunque"):
                 if vecchio and nuovo:
-                    with st.spinner("Aggiornamento in corso..."):
+                    with st.spinner("Aggiornamento..."):
                         if rename_grigliatore(vecchio, nuovo):
-                            st.success(f"Perfetto! {vecchio} è ora {nuovo} in tutti i turni.")
-                            time.sleep(1.5); st.rerun()
-                else:
-                    st.warning("Inserisci il nuovo nome!")
-
-    with st.expander("🗑️ Rimuovi definitivamente un grigliatore"):
+                            st.success("Aggiornato!"); time.sleep(1.5); st.rerun()
+    with st.expander("🗑️ Rimuovi definitivamente"):
         if not df_nomi.empty:
             for idx, row in df_nomi.iterrows():
                 col1, col2 = st.columns([8, 2])
