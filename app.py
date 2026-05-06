@@ -169,7 +169,7 @@ with tab1:
             
             st.markdown("---")
 
-# --- TAB 2: CARNE (AGGIORNATA CON GRAFICI TOTALI IN CIMA) ---
+# --- TAB 2: CARNE ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -185,135 +185,117 @@ with tab2:
     
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
-        df_q.columns = [c.strip().lower() for c in df_q.columns]
+        # Rinominiamo le colonne in base alla loro posizione reale (1a, 2a, 3a, 4a colonna)
+        # Questo garantisce che l'app funzioni sempre con la struttura originaria del tuo Excel!
+        nomi_colonne_standard = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
+        mappa_colonne = {df_q.columns[i]: nomi_colonne_standard[i] for i in range(min(len(df_q.columns), 4))}
+        df_q = df_q.rename(columns=mappa_colonne)
         
-        col_giorno = next((c for c in df_q.columns if 'giorno' in c or 'data' in c), None)
-        col_prodotto = next((c for c in df_q.columns if 'prodotto' in c or 'cibo' in c or 'tipo' in c), None)
-        col_quantita = next((c for c in df_q.columns if 'quantita' in c or 'qta' in c or 'kg' in c), None)
-        col_ora = next((c for c in df_q.columns if 'ora' in c or 'orario' in c or 'tempo' in c), None)
-
-        if col_giorno and col_prodotto and col_quantita:
-            df_q = df_q.rename(columns={
-                col_giorno: 'Giorno',
-                col_prodotto: 'Prodotto',
-                col_quantita: 'Quantita'
-            })
-            df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
+        # Conversione sicura dei dati numerici e di testo
+        df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
+        df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
+        
+        # ==========================================
+        # GRAFICI GENERALI (TUTTA LA SAGRA)
+        # ==========================================
+        st.markdown("""<div style="background-color: #ff4b4b; padding: 12px; border-radius: 5px; margin: 25px 0 15px 0;">
+                        <h2 style="margin:0; color:#FFFFFF; text-align:center;">🏆 Riepilogo Generale Sagra</h2>
+                     </div>""", unsafe_allow_html=True)
+        
+        tot_c_1, tot_c_2 = st.columns(2)
+        
+        with tot_c_1:
+            # 1. Totale Kg cumulativi per prodotto
+            df_tot_prod = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+            fig_tot_sagra = px.bar(
+                df_tot_prod, 
+                x='Prodotto', 
+                y='Quantita', 
+                color='Prodotto', 
+                text_auto=True, 
+                title="📦 Totale Kg Grigliati (Tutta la Sagra)", 
+                color_discrete_map=COLOR_MAP
+            )
+            fig_tot_sagra.update_layout(showlegend=False, height=350)
+            st.plotly_chart(fig_tot_sagra, use_container_width=True, key="totale_sagra_barre")
             
-            if col_ora:
-                df_q = df_q.rename(columns={col_ora: 'Ora'})
-                df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
-            else:
-                df_q['Ora'] = "00:00"
-
-            # ==========================================
-            # SEZIONE AGGIUNTA: RIEPILOGO TOTALE SAGRA
-            # ==========================================
-            st.markdown("""<div style="background-color: #ff4b4b; padding: 12px; border-radius: 5px; margin: 25px 0 15px 0;">
-                            <h2 style="margin:0; color:#FFFFFF; text-align:center;">🏆 Riepilogo Generale Sagra</h2>
-                         </div>""", unsafe_allow_html=True)
-            
-            tot_c_1, tot_c_2 = st.columns(2)
-            
-            with tot_c_1:
-                # 1. Totale cumulativo per prodotto
-                df_tot_prod = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-                fig_tot_sagra = px.bar(
-                    df_tot_prod, 
-                    x='Prodotto', 
+        with tot_c_2:
+            # 2. Carico di lavoro complessivo diviso per giornata
+            df_filtro_date = df_q[df_q['Giorno'].isin(DATE_SOGLIA)]
+            if not df_filtro_date.empty:
+                df_tot_giorni = df_filtro_date.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
+                
+                fig_line_giorni = px.line(
+                    df_tot_giorni, 
+                    x='Giorno', 
                     y='Quantita', 
                     color='Prodotto', 
-                    text_auto=True, 
-                    title="📈 Totale Kg Grigliati (Tutta la Sagra)", 
-                    color_discrete_map=COLOR_MAP
+                    markers=True, 
+                    title="📅 Andamento del Carico di Lavoro Giornaliero",
+                    color_discrete_map=COLOR_MAP,
+                    category_orders={"Giorno": DATE_SOGLIA} # mantiene l'ordine cronologico corretto
                 )
-                fig_tot_sagra.update_layout(showlegend=False, height=350)
-                st.plotly_chart(fig_tot_sagra, use_container_width=True, key="totale_sagra_barre")
+                fig_line_giorni.update_layout(
+                    xaxis_title="Giornata", 
+                    yaxis_title="Quantità Totale (Kg)", 
+                    height=350,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                st.plotly_chart(fig_line_giorni, use_container_width=True, key="totale_sagra_linee_giorni")
+            else:
+                st.info("In attesa di dati per calcolare l'andamento giornaliero.")
+
+        st.divider()
+
+        # ==========================================
+        # DETTAGLIO DELLE SINGOLE GIORNATE
+        # ==========================================
+        st.subheader("🔍 Dettaglio Produzione per Giornata")
+        
+        for data_target in DATE_SOGLIA:
+            df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
+            
+            if not df_giorno.empty and df_giorno['Quantita'].sum() > 0:
+                st.markdown(f"""<div style="background-color: #31333F; padding: 10px; border-radius: 5px; margin: 30px 0 15px 0;">
+                                <h3 style="margin:0; color:#FFFFFF; text-align:center;">📊 Analisi Produzione: {data_target}</h3>
+                             </div>""", unsafe_allow_html=True)
                 
-            with tot_c_2:
-                # 2. Carico di lavoro per singola giornata (Andamento del carico per data)
-                # Filtriamo tenendo solo le date valide impostate in DATE_SOGLIA per evitare sporcizia nei dati
-                df_filtro_date = df_q[df_q['Giorno'].isin(DATE_SOGLIA)]
-                if not df_filtro_date.empty:
-                    df_tot_giorni = df_filtro_date.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
-                    
-                    fig_line_giorni = px.line(
-                        df_tot_giorni, 
-                        x='Giorno', 
+                c_graf1, c_graf2 = st.columns(2)
+                
+                # Grafico giornaliero a barre (totali del giorno)
+                with c_graf1:
+                    df_plot_tot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+                    fig_tot = px.bar(
+                        df_plot_tot, 
+                        x='Prodotto', 
+                        y='Quantita', 
+                        color='Prodotto', 
+                        text_auto=True, 
+                        title="📦 Kg Totali Grigliati", 
+                        color_discrete_map=COLOR_MAP
+                    )
+                    fig_tot.update_layout(showlegend=False, height=350)
+                    st.plotly_chart(fig_tot, use_container_width=True, key=f"carne_tot_{data_target.replace(' ', '_')}")
+                
+                # Grafico dei picchi di lavoro (orario)
+                with c_graf2:
+                    df_time = df_giorno.sort_values(by='Ora')
+                    fig_line = px.line(
+                        df_time, 
+                        x='Ora', 
                         y='Quantita', 
                         color='Prodotto', 
                         markers=True, 
-                        title="📅 Andamento del Carico di Lavoro Giornaliero",
-                        color_discrete_map=COLOR_MAP,
-                        category_orders={"Giorno": DATE_SOGLIA} # mantiene l'ordine cronologico corretto delle date
+                        title="📈 Picchi di Lavoro (Produzione nel tempo)",
+                        color_discrete_map=COLOR_MAP
                     )
-                    fig_line_giorni.update_layout(
-                        xaxis_title="Giornata", 
-                        yaxis_title="Quantità Totale (Kg)", 
+                    fig_line.update_layout(
+                        xaxis_title="Fascia Oraria", 
+                        yaxis_title="Quantità (Kg)", 
                         height=350,
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
-                    st.plotly_chart(fig_line_giorni, use_container_width=True, key="totale_sagra_linee_giorni")
-                else:
-                    st.info("Nessun dato cronologico rilevato per l'andamento giornaliero.")
-
-            st.divider()
-
-            # ==========================================
-            # SEZIONE DETTAGLI DELLE SINGOLE GIORNATE (Resta sotto)
-            # ==========================================
-            st.subheader("🔍 Dettaglio Produzione per Giornata")
-            
-            for data_target in DATE_SOGLIA:
-                df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
-                
-                if not df_giorno.empty and df_giorno['Quantita'].sum() > 0:
-                    st.markdown(f"""<div style="background-color: #31333F; padding: 10px; border-radius: 5px; margin: 30px 0 15px 0;">
-                                    <h3 style="margin:0; color:#FFFFFF; text-align:center;">📊 Analisi Produzione: {data_target}</h3>
-                                 </div>""", unsafe_allow_html=True)
-                    
-                    c_graf1, c_graf2 = st.columns(2)
-                    
-                    # GRAFICO 1: Quantità Totale (A Barre)
-                    with c_graf1:
-                        df_plot_tot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-                        fig_tot = px.bar(
-                            df_plot_tot, 
-                            x='Prodotto', 
-                            y='Quantita', 
-                            color='Prodotto', 
-                            text_auto=True, 
-                            title="📦 Kg Totali Grigliati", 
-                            color_discrete_map=COLOR_MAP
-                        )
-                        fig_tot.update_layout(showlegend=False, height=350)
-                        st.plotly_chart(fig_tot, use_container_width=True, key=f"carne_tot_{data_target.replace(' ', '_')}")
-                    
-                    # GRAFICO 2: Picchi di Lavoro (Linea Temporale)
-                    with c_graf2:
-                        if col_ora in df_q.columns or 'Ora' in df_giorno.columns:
-                            df_time = df_giorno.sort_values(by='Ora')
-                            
-                            fig_line = px.line(
-                                df_time, 
-                                x='Ora', 
-                                y='Quantita', 
-                                color='Prodotto', 
-                                markers=True, 
-                                title="📈 Picchi di Lavoro (Produzione nel tempo)",
-                                color_discrete_map=COLOR_MAP
-                            )
-                            fig_line.update_layout(
-                                xaxis_title="Fascia Oraria", 
-                                yaxis_title="Quantità (Kg)", 
-                                height=350,
-                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                            )
-                            st.plotly_chart(fig_line, use_container_width=True, key=f"carne_time_{data_target.replace(' ', '_')}")
-                        else:
-                            st.info("Aggiungi dei dati con l'orario per sbloccare l'analisi dei picchi di lavoro.")
-        else:
-            st.error("Errore di lettura: Assicurati che nel foglio 'Quantità Grigliate' ci siano le colonne 'Giorno', 'Prodotto', 'Quantita' e 'Ora'.")
+                    st.plotly_chart(fig_line, use_container_width=True, key=f"carne_time_{data_target.replace(' ', '_')}")
 
 # --- TAB 3: GESTIONE TEAM ---
 with tab3:
