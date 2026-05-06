@@ -133,21 +133,18 @@ with tab1:
         for i, t in enumerate(turni_lista):
             current_date = t.split(" - ")[0]
             
-            # Se cambia giorno, creiamo l'intestazione divisa e pulita
             if current_date != last_date:
                 st.markdown(f"""<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin: 20px 0 10px 0; border-left: 5px solid #ff4b4b;">
                                 <h3 style="margin:0; color:#31333F;">📅 {current_date}</h3>
                              </div>""", unsafe_allow_html=True)
                 last_date = current_date
 
-            # Layout del turno
             col_graf, col_txt = st.columns([1, 1])
             
             presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
             count = len(presenti)
             target = 5 if "Pranzo" in t else 6
             
-            # Calcolo dei colori
             if count < target: values, colors = [count, target - count], ["#FF0000", "#eeeeee"]
             elif count == target: values, colors = [count], ["#2a9d8f"]
             else: values, colors = [target, count - target], ["#2a9d8f", "#0000FF"]
@@ -162,7 +159,6 @@ with tab1:
                     margin=dict(t=30, b=10, l=10, r=10),
                     annotations=[dict(text=f"{perc}%<br><span style='font-size:11px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=16, showarrow=False)]
                 )
-                # RISOLTO QUI: Forziamo Streamlit ad assegnare una chiave univoca basata sul nome del turno completo
                 st.plotly_chart(fig, use_container_width=True, key=f"chart_{t.replace(' ', '_')}")
             
             with col_txt:
@@ -173,7 +169,7 @@ with tab1:
             
             st.markdown("---")
 
-# --- TAB 2 & 3 ---
+# --- TAB 2: CARNE (AGGIORNATA CON DOPPIO GRAFICO) ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -182,23 +178,71 @@ with tab2:
             f_data = c1.selectbox("Giorno", DATE_SOGLIA)
             f_tipo = c2.selectbox("Cibo", PRODOTTI_ORDINE)
             f_qta = c3.number_input("Kg", min_value=1)
-            f_ora = c4.text_input("Ora", value=datetime.now().strftime("%H:%M"))
+            f_ora = c4.text_input("Ora (HH:MM)", value=datetime.now().strftime("%H:%M"))
             if st.form_submit_button("Salva 📝"):
                 if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]): 
                     st.success("Dato salvato!"); time.sleep(1); st.rerun()
+    
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
+        
+        # Puliamo le ore per assicurarci che siano ordinate temporalmente
+        df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
+        
         for data_target in DATE_SOGLIA:
             df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
+            
             if not df_giorno.empty:
-                df_plot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-                if df_plot['Quantita'].sum() > 0:
-                    fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP)
-                    # Anche qui usiamo una chiave univoca per sicurezza
-                    st.plotly_chart(fig, use_container_width=True, key=f"carne_{data_target.replace(' ', '_')}")
+                # Verifichiamo se c'è effettivamente della carne grigliata per questo giorno
+                if df_giorno['Quantita'].sum() > 0:
+                    st.markdown(f"""<div style="background-color: #31333F; padding: 10px; border-radius: 5px; margin: 30px 0 15px 0;">
+                                    <h3 style="margin:0; color:#FFFFFF; text-align:center;">📊 Analisi Produzione: {data_target}</h3>
+                                 </div>""", unsafe_allow_html=True)
+                    
+                    # Usiamo un layout a due colonne per mettere i grafici affiancati (se lo schermo è grande)
+                    c_graf1, c_graf2 = st.columns(2)
+                    
+                    # GRAFICO 1: Quantità Totale (A Barre)
+                    with c_graf1:
+                        df_plot_tot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+                        fig_tot = px.bar(
+                            df_plot_tot, 
+                            x='Prodotto', 
+                            y='Quantita', 
+                            color='Prodotto', 
+                            text_auto=True, 
+                            title="📦 Kg Totali Grigliati (Sera)", 
+                            color_discrete_map=COLOR_MAP
+                        )
+                        fig_tot.update_layout(showlegend=False, height=350)
+                        st.plotly_chart(fig_tot, use_container_width=True, key=f"carne_tot_{data_target.replace(' ', '_')}")
+                    
+                    # GRAFICO 2: Picchi di Lavoro (Linea Temporale)
+                    with c_graf2:
+                        # Ordiniamo per orario per avere un grafico sequenziale corretto
+                        df_time = df_giorno.sort_values(by='Ora')
+                        
+                        # Creiamo un grafico a linee con pallini (markers) sui punti di inserimento
+                        fig_line = px.line(
+                            df_time, 
+                            x='Ora', 
+                            y='Quantita', 
+                            color='Prodotto', 
+                            markers=True, 
+                            title="📈 Picchi di Lavoro (Produzione nel tempo)",
+                            color_discrete_map=COLOR_MAP
+                        )
+                        fig_line.update_layout(
+                            xaxis_title="Fascia Oraria", 
+                            yaxis_title="Quantità (Kg)", 
+                            height=350,
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                        )
+                        st.plotly_chart(fig_line, use_container_width=True, key=f"carne_time_{data_target.replace(' ', '_')}")
 
+# --- TAB 3: GESTIONE TEAM ---
 with tab3:
     st.header("⚙️ Gestione Team")
     with st.expander("➕ Aggiungi un nuovo grigliatore"):
