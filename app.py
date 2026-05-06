@@ -151,8 +151,7 @@ with tab1:
         st.subheader("📊 Stato Copertura & Team")
         df_count = df_p.drop_duplicates().copy()
         
-        # Raggruppiamo i turni per data per gestirli in modo cronologico e compatto su mobile
-        # Associazioni per alternare i colori di sfondo per giorno
+        # Colori alternati per data per creare un distacco visivo (effetto "Zebra" tenue)
         giorni_colori = {
             "Sabato 09 maggio": "#f8f9fa",   # Grigio chiarissimo
             "Domenica 10 maggio": "#ffffff", # Bianco
@@ -165,20 +164,19 @@ with tab1:
 
         # Iteriamo i turni in ordine cronologico diretto
         for i, t in enumerate(turni_lista):
-            # Estraiamo il giorno dal nome del turno per capire che sfondo usare
             giorno_chiave = t.split(" - ")[0]
             colore_sfondo = giorni_colori.get(giorno_chiave, "#ffffff")
             
-            # Creiamo un box con sfondo personalizzato ed evidenziato per separare i turni
+            # Box con sfondo personalizzato ed evidenziato per separare i turni
             with st.container():
                 st.markdown(
                     f"""
                     <div style="background-color: {colore_sfondo}; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
                     """, 
-                    unsafe_style=True
+                    unsafe_allow_html=True
                 )
                 
-                # All'interno del box strutturiamo il layout: grafico a sinistra, lista nomi a destra
+                # All'interno del box: grafico a sinistra, lista nomi a destra
                 col_grafico, col_nomi = st.columns([1, 1])
                 
                 presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
@@ -207,16 +205,16 @@ with tab1:
                 
                 # Lista Nomi dei presenti affiancata
                 with col_nomi:
-                    st.markdown("<p style='margin-top:25px; font-weight:bold; color:#495057;'>👨‍🍳 Grigliatori del turno:</p>", unsafe_style=True)
+                    st.markdown("<p style='margin-top:25px; font-weight:bold; color:#495057;'>👨‍🍳 Grigliatori del turno:</p>", unsafe_allow_html=True)
                     if count > 0:
                         for nome in sorted(presenti): 
                             st.write(f"• {nome}")
                     else: 
                         st.write("⚠️ *Nessun grigliatore registrato*")
                 
-                st.markdown("</div>", unsafe_style=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
-# --- TAB 2: CARNE (Invariata) ---
+# --- TAB 2: CARNE ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -242,7 +240,7 @@ with tab2:
                     fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP)
                     st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 3: GESTIONE TEAM (Invariata) ---
+# --- TAB 3: GESTIONE TEAM ---
 with tab3:
     st.header("⚙️ Gestione Elenco Grigliatori")
     
