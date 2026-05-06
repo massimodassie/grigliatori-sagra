@@ -11,7 +11,7 @@ from datetime import datetime
 # --- 1. CONFIGURAZIONE ---
 st.set_page_config(page_title="Grigliatori Sagra", page_icon="🔥", layout="wide")
 
-# URL Aggiornato con il tuo nuovo deployment
+# URL del tuo script aggiornato
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycby7yJ-jjJYworKTL9w20Er0w_Av3U1xqUvLQi0oGlrYy70Sg1xK6BJysNGZIZlJ0DtM/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
@@ -50,6 +50,21 @@ def delete_row(sheet, row_index):
         response = requests.get(url, timeout=15)
         return response.status_code == 200
     except: return False
+
+# Nuova funzione per eliminare una presenza specifica quando si toglie la spunta
+def delete_presenza(nome, turno):
+    try:
+        # Carichiamo i dati freschi per trovare l'indice esatto della riga da eliminare
+        df_p = load_data(URL_PRESENZE)
+        if not df_p.empty:
+            df_p.columns = ['Nome', 'Turno'] + list(df_p.columns[2:])
+            # Trova l'indice della riga che corrisponde a quel nome e quel turno
+            match = df_p[(df_p['Nome'] == nome) & (df_p['Turno'] == turno)]
+            if not match.empty:
+                idx = match.index[0] # Prende la prima corrispondenza
+                return delete_row("Presenze", idx)
+    except: pass
+    return False
 
 def rename_grigliatore(vecchio_nome, nuovo_nome):
     try:
@@ -107,9 +122,15 @@ with tab1:
     for i, t in enumerate(turni_lista):
         with cols[i%3]:
             is_on = (t in miei_turni)
-            if st.toggle(t, value=is_on, key=f"t_{user}_{i}"):
-                if not is_on:
-                    if save_data("Presenze", [user, t]): st.rerun()
+            # Logica toggle corretta sia per attivazione che disattivazione
+            state = st.toggle(t, value=is_on, key=f"t_{user}_{i}")
+            if state != is_on: # C'è stato un cambiamento manuale
+                if state: # Acceso -> Salva la presenza
+                    if save_data("Presenze", [user, t]): 
+                        st.rerun()
+                else: # Spento -> Elimina la presenza
+                    if delete_presenza(user, t): 
+                        st.rerun()
 
     if miei_turni:
         st.divider()
