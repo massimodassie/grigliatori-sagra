@@ -129,12 +129,11 @@ with tab1:
         st.subheader("📊 Stato Copertura Team")
         df_count = df_p.drop_duplicates().copy()
         
-        # Gestione visualizzazione cronologica con separatori
         last_date = ""
         for i, t in enumerate(turni_lista):
             current_date = t.split(" - ")[0]
             
-            # Se cambiamo giorno, mettiamo un'intestazione visibile
+            # Se cambia giorno, creiamo l'intestazione divisa e pulita
             if current_date != last_date:
                 st.markdown(f"""<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin: 20px 0 10px 0; border-left: 5px solid #ff4b4b;">
                                 <h3 style="margin:0; color:#31333F;">📅 {current_date}</h3>
@@ -148,7 +147,7 @@ with tab1:
             count = len(presenti)
             target = 5 if "Pranzo" in t else 6
             
-            # Colori Grafico
+            # Calcolo dei colori
             if count < target: values, colors = [count, target - count], ["#FF0000", "#eeeeee"]
             elif count == target: values, colors = [count], ["#2a9d8f"]
             else: values, colors = [target, count - target], ["#2a9d8f", "#0000FF"]
@@ -157,9 +156,14 @@ with tab1:
             
             with col_graf:
                 fig = go.Figure(go.Pie(values=values, hole=0.6, marker_colors=colors, showlegend=False, textinfo='none'))
-                fig.update_layout(title=f"<b>{t.split(' - ')[1]}</b>", height=180, margin=dict(t=30, b=10, l=10, r=10),
-                                  annotations=[dict(text=f"{perc}%<br><span style='font-size:11px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=16, showarrow=False)])
-                st.plotly_chart(fig, use_container_width=True)
+                fig.update_layout(
+                    title=f"<b>{t.split(' - ')[1]}</b>", 
+                    height=180, 
+                    margin=dict(t=30, b=10, l=10, r=10),
+                    annotations=[dict(text=f"{perc}%<br><span style='font-size:11px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=16, showarrow=False)]
+                )
+                # RISOLTO QUI: Forziamo Streamlit ad assegnare una chiave univoca basata sul nome del turno completo
+                st.plotly_chart(fig, use_container_width=True, key=f"chart_{t.replace(' ', '_')}")
             
             with col_txt:
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -167,9 +171,9 @@ with tab1:
                     for nome in sorted(presenti): st.write(f"• {nome}")
                 else: st.write("⚠️ *Nessuno ancora*")
             
-            st.markdown("---") # Linea di separazione tra turni dello stesso giorno
+            st.markdown("---")
 
-# --- TAB 2 & 3 (Restano invariate come prima) ---
+# --- TAB 2 & 3 ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -192,7 +196,8 @@ with tab2:
                 df_plot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
                 if df_plot['Quantita'].sum() > 0:
                     fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP)
-                    st.plotly_chart(fig, use_container_width=True)
+                    # Anche qui usiamo una chiave univoca per sicurezza
+                    st.plotly_chart(fig, use_container_width=True, key=f"carne_{data_target.replace(' ', '_')}")
 
 with tab3:
     st.header("⚙️ Gestione Team")
