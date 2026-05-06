@@ -169,7 +169,7 @@ with tab1:
             
             st.markdown("---")
 
-# --- TAB 2: CARNE (AGGIORNATA CON DOPPIO GRAFICO) ---
+# --- TAB 2: CARNE (FIX DI SICUREZZA PER KEYERROR) ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -185,23 +185,28 @@ with tab2:
     
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
-        df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
-        df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
+        # ASSEGNAZIONE SICURA DELLE COLONNE: rinominiamo le prime 4 colonne trovate nel foglio
+        mappa_colonne = {}
+        nomi_attesi = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
+        for idx, col in enumerate(df_q.columns[:4]):
+            mappa_colonne[col] = nomi_attesi[idx]
+        df_q = df_q.rename(columns=mappa_colonne)
         
-        # Puliamo le ore per assicurarci che siano ordinate temporalmente
-        df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
+        # Conversione sicura dei dati
+        if 'Quantita' in df_q.columns:
+            df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
+        if 'Ora' in df_q.columns:
+            df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
         
         for data_target in DATE_SOGLIA:
-            df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
+            df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)] if 'Giorno' in df_q.columns else pd.DataFrame()
             
             if not df_giorno.empty:
-                # Verifichiamo se c'è effettivamente della carne grigliata per questo giorno
-                if df_giorno['Quantita'].sum() > 0:
+                if 'Quantita' in df_giorno.columns and df_giorno['Quantita'].sum() > 0:
                     st.markdown(f"""<div style="background-color: #31333F; padding: 10px; border-radius: 5px; margin: 30px 0 15px 0;">
                                     <h3 style="margin:0; color:#FFFFFF; text-align:center;">📊 Analisi Produzione: {data_target}</h3>
                                  </div>""", unsafe_allow_html=True)
                     
-                    # Usiamo un layout a due colonne per mettere i grafici affiancati (se lo schermo è grande)
                     c_graf1, c_graf2 = st.columns(2)
                     
                     # GRAFICO 1: Quantità Totale (A Barre)
@@ -213,7 +218,7 @@ with tab2:
                             y='Quantita', 
                             color='Prodotto', 
                             text_auto=True, 
-                            title="📦 Kg Totali Grigliati (Sera)", 
+                            title="📦 Kg Totali Grigliati", 
                             color_discrete_map=COLOR_MAP
                         )
                         fig_tot.update_layout(showlegend=False, height=350)
@@ -221,26 +226,28 @@ with tab2:
                     
                     # GRAFICO 2: Picchi di Lavoro (Linea Temporale)
                     with c_graf2:
-                        # Ordiniamo per orario per avere un grafico sequenziale corretto
-                        df_time = df_giorno.sort_values(by='Ora')
-                        
-                        # Creiamo un grafico a linee con pallini (markers) sui punti di inserimento
-                        fig_line = px.line(
-                            df_time, 
-                            x='Ora', 
-                            y='Quantita', 
-                            color='Prodotto', 
-                            markers=True, 
-                            title="📈 Picchi di Lavoro (Produzione nel tempo)",
-                            color_discrete_map=COLOR_MAP
-                        )
-                        fig_line.update_layout(
-                            xaxis_title="Fascia Oraria", 
-                            yaxis_title="Quantità (Kg)", 
-                            height=350,
-                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                        )
-                        st.plotly_chart(fig_line, use_container_width=True, key=f"carne_time_{data_target.replace(' ', '_')}")
+                        if 'Ora' in df_giorno.columns:
+                            # Ordiniamo temporalmente
+                            df_time = df_giorno.sort_values(by='Ora')
+                            
+                            fig_line = px.line(
+                                df_time, 
+                                x='Ora', 
+                                y='Quantita', 
+                                color='Prodotto', 
+                                markers=True, 
+                                title="📈 Picchi di Lavoro (Produzione nel tempo)",
+                                color_discrete_map=COLOR_MAP
+                            )
+                            fig_line.update_layout(
+                                xaxis_title="Fascia Oraria", 
+                                yaxis_title="Quantità (Kg)", 
+                                height=350,
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                            )
+                            st.plotly_chart(fig_line, use_container_width=True, key=f"carne_time_{data_target.replace(' ', '_')}")
+                        else:
+                            st.warning("Impossibile generare il grafico dei picchi: colonna 'Ora' non rilevata.")
 
 # --- TAB 3: GESTIONE TEAM ---
 with tab3:
