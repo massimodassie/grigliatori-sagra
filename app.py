@@ -210,4 +210,132 @@ with tab2:
             # SEZIONE AGGIUNTA: RIEPILOGO TOTALE SAGRA
             # ==========================================
             st.markdown("""<div style="background-color: #ff4b4b; padding: 12px; border-radius: 5px; margin: 25px 0 15px 0;">
-                            <h2
+                            <h2 style="margin:0; color:#FFFFFF; text-align:center;">🏆 Riepilogo Generale Sagra</h2>
+                         </div>""", unsafe_allow_html=True)
+            
+            tot_c_1, tot_c_2 = st.columns(2)
+            
+            with tot_c_1:
+                # 1. Totale cumulativo per prodotto
+                df_tot_prod = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+                fig_tot_sagra = px.bar(
+                    df_tot_prod, 
+                    x='Prodotto', 
+                    y='Quantita', 
+                    color='Prodotto', 
+                    text_auto=True, 
+                    title="📈 Totale Kg Grigliati (Tutta la Sagra)", 
+                    color_discrete_map=COLOR_MAP
+                )
+                fig_tot_sagra.update_layout(showlegend=False, height=350)
+                st.plotly_chart(fig_tot_sagra, use_container_width=True, key="totale_sagra_barre")
+                
+            with tot_c_2:
+                # 2. Carico di lavoro per singola giornata (Andamento del carico per data)
+                # Filtriamo tenendo solo le date valide impostate in DATE_SOGLIA per evitare sporcizia nei dati
+                df_filtro_date = df_q[df_q['Giorno'].isin(DATE_SOGLIA)]
+                if not df_filtro_date.empty:
+                    df_tot_giorni = df_filtro_date.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
+                    
+                    fig_line_giorni = px.line(
+                        df_tot_giorni, 
+                        x='Giorno', 
+                        y='Quantita', 
+                        color='Prodotto', 
+                        markers=True, 
+                        title="📅 Andamento del Carico di Lavoro Giornaliero",
+                        color_discrete_map=COLOR_MAP,
+                        category_orders={"Giorno": DATE_SOGLIA} # mantiene l'ordine cronologico corretto delle date
+                    )
+                    fig_line_giorni.update_layout(
+                        xaxis_title="Giornata", 
+                        yaxis_title="Quantità Totale (Kg)", 
+                        height=350,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    st.plotly_chart(fig_line_giorni, use_container_width=True, key="totale_sagra_linee_giorni")
+                else:
+                    st.info("Nessun dato cronologico rilevato per l'andamento giornaliero.")
+
+            st.divider()
+
+            # ==========================================
+            # SEZIONE DETTAGLI DELLE SINGOLE GIORNATE (Resta sotto)
+            # ==========================================
+            st.subheader("🔍 Dettaglio Produzione per Giornata")
+            
+            for data_target in DATE_SOGLIA:
+                df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
+                
+                if not df_giorno.empty and df_giorno['Quantita'].sum() > 0:
+                    st.markdown(f"""<div style="background-color: #31333F; padding: 10px; border-radius: 5px; margin: 30px 0 15px 0;">
+                                    <h3 style="margin:0; color:#FFFFFF; text-align:center;">📊 Analisi Produzione: {data_target}</h3>
+                                 </div>""", unsafe_allow_html=True)
+                    
+                    c_graf1, c_graf2 = st.columns(2)
+                    
+                    # GRAFICO 1: Quantità Totale (A Barre)
+                    with c_graf1:
+                        df_plot_tot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+                        fig_tot = px.bar(
+                            df_plot_tot, 
+                            x='Prodotto', 
+                            y='Quantita', 
+                            color='Prodotto', 
+                            text_auto=True, 
+                            title="📦 Kg Totali Grigliati", 
+                            color_discrete_map=COLOR_MAP
+                        )
+                        fig_tot.update_layout(showlegend=False, height=350)
+                        st.plotly_chart(fig_tot, use_container_width=True, key=f"carne_tot_{data_target.replace(' ', '_')}")
+                    
+                    # GRAFICO 2: Picchi di Lavoro (Linea Temporale)
+                    with c_graf2:
+                        if col_ora in df_q.columns or 'Ora' in df_giorno.columns:
+                            df_time = df_giorno.sort_values(by='Ora')
+                            
+                            fig_line = px.line(
+                                df_time, 
+                                x='Ora', 
+                                y='Quantita', 
+                                color='Prodotto', 
+                                markers=True, 
+                                title="📈 Picchi di Lavoro (Produzione nel tempo)",
+                                color_discrete_map=COLOR_MAP
+                            )
+                            fig_line.update_layout(
+                                xaxis_title="Fascia Oraria", 
+                                yaxis_title="Quantità (Kg)", 
+                                height=350,
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                            )
+                            st.plotly_chart(fig_line, use_container_width=True, key=f"carne_time_{data_target.replace(' ', '_')}")
+                        else:
+                            st.info("Aggiungi dei dati con l'orario per sbloccare l'analisi dei picchi di lavoro.")
+        else:
+            st.error("Errore di lettura: Assicurati che nel foglio 'Quantità Grigliate' ci siano le colonne 'Giorno', 'Prodotto', 'Quantita' e 'Ora'.")
+
+# --- TAB 3: GESTIONE TEAM ---
+with tab3:
+    st.header("⚙️ Gestione Team")
+    with st.expander("➕ Aggiungi un nuovo grigliatore"):
+        nuovo_nome = st.text_input("Nome e Cognome per inserimento")
+        if st.button("Salva Nuovo"):
+            if nuovo_nome and save_data("ListaGrigliatori", [nuovo_nome]):
+                st.success("Aggiunto!"); time.sleep(1); st.rerun()
+    with st.expander("📝 Modifica nome esistente"):
+        if not df_nomi.empty:
+            vecchio = st.selectbox("Seleziona chi vuoi rinominare", lista_grigliatori)
+            nuovo = st.text_input("Inserisci il nuovo nome corretto")
+            if st.button("Aggiorna Nome Ovunque"):
+                if vecchio and nuovo:
+                    with st.spinner("Aggiornamento..."):
+                        if rename_grigliatore(vecchio, nuovo):
+                            st.success("Aggiornato!"); time.sleep(1.5); st.rerun()
+    with st.expander("🗑️ Rimuovi definitivamente"):
+        if not df_nomi.empty:
+            for idx, row in df_nomi.iterrows():
+                col1, col2 = st.columns([8, 2])
+                col1.write(row['Nome'])
+                if col2.button("Elimina", key=f"del_grig_{idx}"):
+                    if delete_row("ListaGrigliatori", idx): st.rerun()
