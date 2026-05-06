@@ -169,7 +169,7 @@ with tab1:
             
             st.markdown("---")
 
-# --- TAB 2: CARNE (FIX DI SICUREZZA PER KEYERROR) ---
+# --- TAB 2: CARNE (AGGIORNATA CON GRAFICI TOTALI IN CIMA) ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -185,91 +185,29 @@ with tab2:
     
     df_q = load_data(URL_MAGAZZINO)
     if not df_q.empty:
-        # ASSEGNAZIONE SICURA DELLE COLONNE: rinominiamo le prime 4 colonne trovate nel foglio
-        mappa_colonne = {}
-        nomi_attesi = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
-        for idx, col in enumerate(df_q.columns[:4]):
-            mappa_colonne[col] = nomi_attesi[idx]
-        df_q = df_q.rename(columns=mappa_colonne)
+        df_q.columns = [c.strip().lower() for c in df_q.columns]
         
-        # Conversione sicura dei dati
-        if 'Quantita' in df_q.columns:
-            df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
-        if 'Ora' in df_q.columns:
-            df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
-        
-        for data_target in DATE_SOGLIA:
-            df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)] if 'Giorno' in df_q.columns else pd.DataFrame()
-            
-            if not df_giorno.empty:
-                if 'Quantita' in df_giorno.columns and df_giorno['Quantita'].sum() > 0:
-                    st.markdown(f"""<div style="background-color: #31333F; padding: 10px; border-radius: 5px; margin: 30px 0 15px 0;">
-                                    <h3 style="margin:0; color:#FFFFFF; text-align:center;">📊 Analisi Produzione: {data_target}</h3>
-                                 </div>""", unsafe_allow_html=True)
-                    
-                    c_graf1, c_graf2 = st.columns(2)
-                    
-                    # GRAFICO 1: Quantità Totale (A Barre)
-                    with c_graf1:
-                        df_plot_tot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-                        fig_tot = px.bar(
-                            df_plot_tot, 
-                            x='Prodotto', 
-                            y='Quantita', 
-                            color='Prodotto', 
-                            text_auto=True, 
-                            title="📦 Kg Totali Grigliati", 
-                            color_discrete_map=COLOR_MAP
-                        )
-                        fig_tot.update_layout(showlegend=False, height=350)
-                        st.plotly_chart(fig_tot, use_container_width=True, key=f"carne_tot_{data_target.replace(' ', '_')}")
-                    
-                    # GRAFICO 2: Picchi di Lavoro (Linea Temporale)
-                    with c_graf2:
-                        if 'Ora' in df_giorno.columns:
-                            # Ordiniamo temporalmente
-                            df_time = df_giorno.sort_values(by='Ora')
-                            
-                            fig_line = px.line(
-                                df_time, 
-                                x='Ora', 
-                                y='Quantita', 
-                                color='Prodotto', 
-                                markers=True, 
-                                title="📈 Picchi di Lavoro (Produzione nel tempo)",
-                                color_discrete_map=COLOR_MAP
-                            )
-                            fig_line.update_layout(
-                                xaxis_title="Fascia Oraria", 
-                                yaxis_title="Quantità (Kg)", 
-                                height=350,
-                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                            )
-                            st.plotly_chart(fig_line, use_container_width=True, key=f"carne_time_{data_target.replace(' ', '_')}")
-                        else:
-                            st.warning("Impossibile generare il grafico dei picchi: colonna 'Ora' non rilevata.")
+        col_giorno = next((c for c in df_q.columns if 'giorno' in c or 'data' in c), None)
+        col_prodotto = next((c for c in df_q.columns if 'prodotto' in c or 'cibo' in c or 'tipo' in c), None)
+        col_quantita = next((c for c in df_q.columns if 'quantita' in c or 'qta' in c or 'kg' in c), None)
+        col_ora = next((c for c in df_q.columns if 'ora' in c or 'orario' in c or 'tempo' in c), None)
 
-# --- TAB 3: GESTIONE TEAM ---
-with tab3:
-    st.header("⚙️ Gestione Team")
-    with st.expander("➕ Aggiungi un nuovo grigliatore"):
-        nuovo_nome = st.text_input("Nome e Cognome per inserimento")
-        if st.button("Salva Nuovo"):
-            if nuovo_nome and save_data("ListaGrigliatori", [nuovo_nome]):
-                st.success("Aggiunto!"); time.sleep(1); st.rerun()
-    with st.expander("📝 Modifica nome esistente"):
-        if not df_nomi.empty:
-            vecchio = st.selectbox("Seleziona chi vuoi rinominare", lista_grigliatori)
-            nuovo = st.text_input("Inserisci il nuovo nome corretto")
-            if st.button("Aggiorna Nome Ovunque"):
-                if vecchio and nuovo:
-                    with st.spinner("Aggiornamento..."):
-                        if rename_grigliatore(vecchio, nuovo):
-                            st.success("Aggiornato!"); time.sleep(1.5); st.rerun()
-    with st.expander("🗑️ Rimuovi definitivamente"):
-        if not df_nomi.empty:
-            for idx, row in df_nomi.iterrows():
-                col1, col2 = st.columns([8, 2])
-                col1.write(row['Nome'])
-                if col2.button("Elimina", key=f"del_grig_{idx}"):
-                    if delete_row("ListaGrigliatori", idx): st.rerun()
+        if col_giorno and col_prodotto and col_quantita:
+            df_q = df_q.rename(columns={
+                col_giorno: 'Giorno',
+                col_prodotto: 'Prodotto',
+                col_quantita: 'Quantita'
+            })
+            df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
+            
+            if col_ora:
+                df_q = df_q.rename(columns={col_ora: 'Ora'})
+                df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
+            else:
+                df_q['Ora'] = "00:00"
+
+            # ==========================================
+            # SEZIONE AGGIUNTA: RIEPILOGO TOTALE SAGRA
+            # ==========================================
+            st.markdown("""<div style="background-color: #ff4b4b; padding: 12px; border-radius: 5px; margin: 25px 0 15px 0;">
+                            <h2
