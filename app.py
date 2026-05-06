@@ -51,17 +51,14 @@ def delete_row(sheet, row_index):
         return response.status_code == 200
     except: return False
 
-# Nuova funzione per eliminare una presenza specifica quando si toglie la spunta
 def delete_presenza(nome, turno):
     try:
-        # Carichiamo i dati freschi per trovare l'indice esatto della riga da eliminare
         df_p = load_data(URL_PRESENZE)
         if not df_p.empty:
             df_p.columns = ['Nome', 'Turno'] + list(df_p.columns[2:])
-            # Trova l'indice della riga che corrisponde a quel nome e quel turno
             match = df_p[(df_p['Nome'] == nome) & (df_p['Turno'] == turno)]
             if not match.empty:
-                idx = match.index[0] # Prende la prima corrispondenza
+                idx = match.index[0]
                 return delete_row("Presenze", idx)
     except: pass
     return False
@@ -115,22 +112,30 @@ with tab1:
         df_p.columns = ['Nome', 'Turno'] + list(df_p.columns[2:])
         miei_turni = df_p[df_p['Nome'] == user]['Turno'].tolist()
     
-    turni_lista = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
+    # Lista ordinata rigorosamente in modo cronologico
+    turni_lista = [
+        "Sabato 09 maggio - Cena", 
+        "Domenica 10 maggio - Pranzo", 
+        "Domenica 10 maggio - Cena", 
+        "Venerdì 15 maggio - Cena della costata", 
+        "Sabato 16 maggio - Cena", 
+        "Domenica 17 maggio - Cena", 
+        "Sabato 23 maggio - Cena", 
+        "Domenica 24 maggio - Pranzo", 
+        "Domenica 24 maggio - Cena"
+    ]
     
     st.subheader("Segna i tuoi turni")
     cols = st.columns(3)
     for i, t in enumerate(turni_lista):
         with cols[i%3]:
             is_on = (t in miei_turni)
-            # Logica toggle corretta sia per attivazione che disattivazione
             state = st.toggle(t, value=is_on, key=f"t_{user}_{i}")
-            if state != is_on: # C'è stato un cambiamento manuale
-                if state: # Acceso -> Salva la presenza
-                    if save_data("Presenze", [user, t]): 
-                        st.rerun()
-                else: # Spento -> Elimina la presenza
-                    if delete_presenza(user, t): 
-                        st.rerun()
+            if state != is_on:
+                if state:
+                    if save_data("Presenze", [user, t]): st.rerun()
+                else:
+                    if delete_presenza(user, t): st.rerun()
 
     if miei_turni:
         st.divider()
@@ -145,12 +150,41 @@ with tab1:
     if not df_p.empty:
         st.subheader("📊 Stato Copertura & Team")
         df_count = df_p.drop_duplicates().copy()
-        cp = st.columns(3)
+        
+        # Raggruppiamo i turni per data per gestirli in modo cronologico e compatto su mobile
+        # Associazioni per alternare i colori di sfondo per giorno
+        giorni_colori = {
+            "Sabato 09 maggio": "#f8f9fa",   # Grigio chiarissimo
+            "Domenica 10 maggio": "#ffffff", # Bianco
+            "Venerdì 15 maggio": "#f8f9fa",
+            "Sabato 16 maggio": "#ffffff",
+            "Domenica 17 maggio": "#f8f9fa",
+            "Sabato 23 maggio": "#ffffff",
+            "Domenica 24 maggio": "#f8f9fa"
+        }
+
+        # Iteriamo i turni in ordine cronologico diretto
         for i, t in enumerate(turni_lista):
-            with cp[i%3]:
+            # Estraiamo il giorno dal nome del turno per capire che sfondo usare
+            giorno_chiave = t.split(" - ")[0]
+            colore_sfondo = giorni_colori.get(giorno_chiave, "#ffffff")
+            
+            # Creiamo un box con sfondo personalizzato ed evidenziato per separare i turni
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div style="background-color: {colore_sfondo}; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
+                    """, 
+                    unsafe_style=True
+                )
+                
+                # All'interno del box strutturiamo il layout: grafico a sinistra, lista nomi a destra
+                col_grafico, col_nomi = st.columns([1, 1])
+                
                 presenti = df_count[df_count['Turno'] == t]['Nome'].unique()
                 count = len(presenti)
                 target = 5 if "Pranzo" in t else 6
+                
                 if count < target:
                     values, colors = [count, target - count], ["#FF0000", "#eeeeee"]
                 elif count == target:
@@ -159,14 +193,30 @@ with tab1:
                     values, colors = [target, count - target], ["#2a9d8f", "#0000FF"]
                 
                 perc = int((count / target) * 100)
-                fig = go.Figure(go.Pie(values=values, hole=0.6, marker_colors=colors, showlegend=False, textinfo='none'))
-                fig.update_layout(title=f"<b>{t}</b>", height=220, margin=dict(t=40,b=0,l=0,r=0),
-                                  annotations=[dict(text=f"{perc}%<br><span style='font-size:12px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=18, showarrow=False)])
-                st.plotly_chart(fig, use_container_width=True)
-                if count > 0:
-                    for nome in sorted(presenti): st.write(f"• {nome}")
+                
+                # Grafico
+                with col_grafico:
+                    fig = go.Figure(go.Pie(values=values, hole=0.6, marker_colors=colors, showlegend=False, textinfo='none'))
+                    fig.update_layout(
+                        title=f"<b>{t}</b>", 
+                        height=180, 
+                        margin=dict(t=30, b=10, l=10, r=10),
+                        annotations=[dict(text=f"{perc}%<br><span style='font-size:11px'>{count}/{target}</span>", x=0.5, y=0.5, font_size=16, showarrow=False)]
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                # Lista Nomi dei presenti affiancata
+                with col_nomi:
+                    st.markdown("<p style='margin-top:25px; font-weight:bold; color:#495057;'>👨‍🍳 Grigliatori del turno:</p>", unsafe_style=True)
+                    if count > 0:
+                        for nome in sorted(presenti): 
+                            st.write(f"• {nome}")
+                    else: 
+                        st.write("⚠️ *Nessun grigliatore registrato*")
+                
+                st.markdown("</div>", unsafe_style=True)
 
-# --- TAB 2: CARNE ---
+# --- TAB 2: CARNE (Invariata) ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     with st.expander("➕ Inserisci Nuova Quantità"):
@@ -192,7 +242,7 @@ with tab2:
                     fig = px.bar(df_plot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, title=f"Produzione: {data_target}", color_discrete_map=COLOR_MAP)
                     st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 3: GESTIONE TEAM ---
+# --- TAB 3: GESTIONE TEAM (Invariata) ---
 with tab3:
     st.header("⚙️ Gestione Elenco Grigliatori")
     
