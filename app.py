@@ -169,7 +169,7 @@ with tab1:
             
             st.markdown("---")
 
-# --- TAB 2: CARNE (CON ELIMINAZIONE DATI AGGIUNTA) ---
+# --- TAB 2: CARNE ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     
@@ -187,20 +187,17 @@ with tab2:
                     if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]): 
                         st.success("Dato salvato!"); time.sleep(1); st.rerun()
 
-    # Scarichiamo i dati una volta sola
     df_q = load_data(URL_MAGAZZINO)
     
     with col_eliminazione:
         with st.expander("✏️ Gestisci / Elimina Quantità Inserite"):
             if not df_q.empty:
-                # Normalizziamo temporaneamente le colonne per trovarle in sicurezza
                 nomi_colonne_standard = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
                 mappa_colonne = {df_q.columns[i]: nomi_colonne_standard[i] for i in range(min(len(df_q.columns), 4))}
                 df_temp = df_q.rename(columns=mappa_colonne)
                 
                 st.write("Seleziona una riga per eliminarla:")
                 for idx, row in df_temp.iterrows():
-                    # Creiamo una riga visiva per ciascun inserimento nel database
                     testo_riga = f"🗑️ {row['Giorno']} - {row['Prodotto']}: {row['Quantita']} Kg (ore {row['Ora']})"
                     col_testo, col_cancella = st.columns([8, 2])
                     col_testo.write(testo_riga)
@@ -212,12 +209,10 @@ with tab2:
                 st.info("Nessun dato inserito da poter eliminare.")
 
     if not df_q.empty:
-        # Rinominiamo le colonne per i grafici
         nomi_colonne_standard = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
         mappa_colonne = {df_q.columns[i]: nomi_colonne_standard[i] for i in range(min(len(df_q.columns), 4))}
         df_q = df_q.rename(columns=mappa_colonne)
         
-        # Conversione sicura dei dati numerici e di testo
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
         df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
         
@@ -231,7 +226,6 @@ with tab2:
         tot_c_1, tot_c_2 = st.columns(2)
         
         with tot_c_1:
-            # 1. Totale Kg cumulativi per prodotto
             df_tot_prod = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
             fig_tot_sagra = px.bar(
                 df_tot_prod, 
@@ -246,8 +240,10 @@ with tab2:
             st.plotly_chart(fig_tot_sagra, use_container_width=True, key="totale_sagra_barre")
             
         with tot_c_2:
-            # 2. Carico di lavoro complessivo diviso per giornata
-            df_filtro_date = df_q[df_q['Giorno'].isin(DATE_SOGLIA)]
+            # FILTRO ROBUSTO SULLE DATE: Rende il confronto immune a maiuscole, minuscole o spazi extra
+            date_soglia_clean = [d.strip().lower() for d in DATE_SOGLIA]
+            df_filtro_date = df_q[df_q['Giorno'].astype(str).str.strip().str.lower().isin(date_soglia_clean)]
+            
             if not df_filtro_date.empty:
                 df_tot_giorni = df_filtro_date.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
                 
@@ -288,7 +284,6 @@ with tab2:
                 
                 c_graf1, c_graf2 = st.columns(2)
                 
-                # Grafico giornaliero a barre
                 with c_graf1:
                     df_plot_tot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
                     fig_tot = px.bar(
@@ -303,7 +298,6 @@ with tab2:
                     fig_tot.update_layout(showlegend=False, height=350)
                     st.plotly_chart(fig_tot, use_container_width=True, key=f"carne_tot_{data_target.replace(' ', '_')}")
                 
-                # Grafico dei picchi di lavoro (orario)
                 with c_graf2:
                     df_time = df_giorno.sort_values(by='Ora')
                     fig_line = px.line(
