@@ -169,24 +169,50 @@ with tab1:
             
             st.markdown("---")
 
-# --- TAB 2: CARNE ---
+# --- TAB 2: CARNE (CON ELIMINAZIONE DATI AGGIUNTA) ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
-    with st.expander("➕ Inserisci Nuova Quantità"):
-        with st.form("carne_form"):
-            c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-            f_data = c1.selectbox("Giorno", DATE_SOGLIA)
-            f_tipo = c2.selectbox("Cibo", PRODOTTI_ORDINE)
-            f_qta = c3.number_input("Kg", min_value=1)
-            f_ora = c4.text_input("Ora (HH:MM)", value=datetime.now().strftime("%H:%M"))
-            if st.form_submit_button("Salva 📝"):
-                if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]): 
-                    st.success("Dato salvato!"); time.sleep(1); st.rerun()
     
+    col_inserimento, col_eliminazione = st.columns(2)
+    
+    with col_inserimento:
+        with st.expander("➕ Inserisci Nuova Quantità"):
+            with st.form("carne_form"):
+                c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+                f_data = c1.selectbox("Giorno", DATE_SOGLIA)
+                f_tipo = c2.selectbox("Cibo", PRODOTTI_ORDINE)
+                f_qta = c3.number_input("Kg", min_value=1)
+                f_ora = c4.text_input("Ora (HH:MM)", value=datetime.now().strftime("%H:%M"))
+                if st.form_submit_button("Salva 📝"):
+                    if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]): 
+                        st.success("Dato salvato!"); time.sleep(1); st.rerun()
+
+    # Scarichiamo i dati una volta sola
     df_q = load_data(URL_MAGAZZINO)
+    
+    with col_eliminazione:
+        with st.expander("✏️ Gestisci / Elimina Quantità Inserite"):
+            if not df_q.empty:
+                # Normalizziamo temporaneamente le colonne per trovarle in sicurezza
+                nomi_colonne_standard = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
+                mappa_colonne = {df_q.columns[i]: nomi_colonne_standard[i] for i in range(min(len(df_q.columns), 4))}
+                df_temp = df_q.rename(columns=mappa_colonne)
+                
+                st.write("Seleziona una riga per eliminarla:")
+                for idx, row in df_temp.iterrows():
+                    # Creiamo una riga visiva per ciascun inserimento nel database
+                    testo_riga = f"🗑️ {row['Giorno']} - {row['Prodotto']}: {row['Quantita']} Kg (ore {row['Ora']})"
+                    col_testo, col_cancella = st.columns([8, 2])
+                    col_testo.write(testo_riga)
+                    if col_cancella.button("Elimina", key=f"del_carne_{idx}"):
+                        with st.spinner("Eliminazione in corso..."):
+                            if delete_row("Quantità Grigliate", idx):
+                                st.success("Dato rimosso!"); time.sleep(1); st.rerun()
+            else:
+                st.info("Nessun dato inserito da poter eliminare.")
+
     if not df_q.empty:
-        # Rinominiamo le colonne in base alla loro posizione reale (1a, 2a, 3a, 4a colonna)
-        # Questo garantisce che l'app funzioni sempre con la struttura originaria del tuo Excel!
+        # Rinominiamo le colonne per i grafici
         nomi_colonne_standard = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
         mappa_colonne = {df_q.columns[i]: nomi_colonne_standard[i] for i in range(min(len(df_q.columns), 4))}
         df_q = df_q.rename(columns=mappa_colonne)
@@ -233,7 +259,7 @@ with tab2:
                     markers=True, 
                     title="📅 Andamento del Carico di Lavoro Giornaliero",
                     color_discrete_map=COLOR_MAP,
-                    category_orders={"Giorno": DATE_SOGLIA} # mantiene l'ordine cronologico corretto
+                    category_orders={"Giorno": DATE_SOGLIA}
                 )
                 fig_line_giorni.update_layout(
                     xaxis_title="Giornata", 
@@ -262,7 +288,7 @@ with tab2:
                 
                 c_graf1, c_graf2 = st.columns(2)
                 
-                # Grafico giornaliero a barre (totali del giorno)
+                # Grafico giornaliero a barre
                 with c_graf1:
                     df_plot_tot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
                     fig_tot = px.bar(
