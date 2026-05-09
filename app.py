@@ -86,28 +86,44 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # Calcolo percentuale per la barra
-            percentuale = min(1.0, count / target)
-            
-            # Scelta colore e messaggio
+            # Definizione colore e testo
             if count < target:
-                color_hex = "#e76f51" # Arancio
-                stato_txt = f"⚠️ TARGET KO: Mancano {target - count} persone"
+                color_c = "#e76f51" # Arancio
+                status_m = f"⚠️ TARGET KO: -{target-count}"
             elif count == target:
-                color_hex = "#2a9d8f" # Verde
-                stato_txt = "✅ TARGET OK: Copertura perfetta"
+                color_c = "#2a9d8f" # Verde
+                status_m = "✅ TARGET OK"
             else:
-                color_hex = "#1d3557" # Blu Scuro
-                stato_txt = f"✅ TARGET OK: Extra copertura (+{count - target})"
+                color_c = "#1d3557" # Blu Scuro
+                status_m = f"✅ TARGET OK (+{count-target})"
 
-            # Visualizzazione con barre di progresso (Niente più cerchi grigi Plotly!)
-            st.markdown(f"#### {dt}")
-            st.markdown(f"<p style='color:{color_hex}; font-weight:bold; margin-bottom:0;'>{stato_txt} ({count}/{target})</p>", unsafe_allow_html=True)
-            st.progress(percentuale)
-            st.markdown(f"<small>PRESENTI: {', '.join(presenti) if presenti else 'Nessuno'}</small>", unsafe_allow_html=True)
+            c1, c2 = st.columns([1, 4])
+            with c1:
+                # TRUCCO: Il range del gauge deve essere SEMPRE uguale al count se count > target
+                # Questo impedisce a Plotly di disegnare l'arco grigio di "sfondo"
+                max_gauge = max(target, count)
+                
+                fig = go.Figure(go.Indicator(
+                    mode = "gauge+number",
+                    value = count,
+                    number = {'font': {'color': color_c, 'size': 26}},
+                    gauge = {
+                        'axis': {'range': [0, max_gauge], 'visible': False},
+                        'bar': {'color': color_c},
+                        'bgcolor': "#eeeeee",
+                        'borderwidth': 0
+                    }
+                ))
+                fig.update_layout(height=140, margin=dict(t=20, b=10, l=10, r=10))
+                st.plotly_chart(fig, use_container_width=True, key=f"g_{dt}", config={'displayModeBar': False})
+            
+            with c2:
+                st.markdown(f"### {dt}")
+                st.markdown(f"**{status_m}** ({count}/{target})")
+                st.markdown(f"PRESENTI: {', '.join(presenti) if presenti else '*Nessuno*'}")
             st.divider()
 
-# --- TAB 2: MONITOR CARNE ---
+# --- TAB 2: MONITOR CARNE (Invariato) ---
 with tab_carne:
     df_q = load_data(URL_CARNE)
     if not df_q.empty:
@@ -146,23 +162,7 @@ with tab_carne:
                     st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, 
                                           color_discrete_map=COLORI_CARNE, height=300, title="Andamento Orario", line_shape="spline"), use_container_width=True, key=f"l_{g_uff}")
 
-    st.markdown("### 🏆 4. Riepilogo Totale Sagra")
-    if not df_q.empty:
-        df_max_g = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
-        c_tot1, c_tot2 = st.columns(2)
-        with c_tot1:
-            df_sagra = df_max_g.groupby("Prodotto")["Quantita"].sum().reindex(PRODOTTI).fillna(0).reset_index()
-            st.plotly_chart(px.bar(df_sagra, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, 
-                                   color_discrete_map=COLORI_CARNE, height=400, title="Somma Totale Pezzi"), use_container_width=True)
-        with c_tot2:
-            df_days = df_max_g.copy()
-            df_days["Giorno"] = pd.Categorical(df_days["Giorno"], categories=DATE_UFFICIALI, ordered=True)
-            df_days = df_days.sort_values("Giorno")
-            st.plotly_chart(px.line(df_days, x="Giorno", y="Quantita", color="Prodotto", markers=True,
-                                   color_discrete_map=COLORI_CARNE, height=400, title="Andamento Giornaliero Sagra",
-                                   line_shape="spline"), use_container_width=True)
-
-# --- TAB 3: GESTIONE NOMI ---
+# --- TAB 3: GESTIONE NOMI (Invariato) ---
 with tab_impostazioni:
     st.header("Gestione Anagrafica Grigliatori")
     df_n = load_data(URL_NOMI)
