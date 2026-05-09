@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
 import requests
 import json
@@ -46,26 +45,25 @@ def delete_row(sheet, row_idx):
         return True
     except: return False
 
-# --- CARICAMENTO ---
+# --- CARICAMENTO DATI ---
 df_q = load_data(URL_CARNE)
 if not df_q.empty:
     while len(df_q.columns) < 4: df_q[f"Col_{len(df_q.columns)}"] = ""
     df_q.columns = ["Giorno", "Prodotto", "Quantita", "Ora"][:len(df_q.columns)]
     df_q["Quantita"] = pd.to_numeric(df_q["Quantita"], errors='coerce').fillna(0)
 
-# --- INTERFACCIA ---
-st.title("🍖 Monitoraggio Carne Sagra")
+st.title("🍖 Gestione Monitor Carne")
 
-# 1. SEZIONE INSERIMENTO (Sempre visibile)
+# --- 1. INSERIMENTO DATI ---
+st.markdown("### ➕ 1. Inserimento Nuova Rilevazione")
 with st.container():
-    st.subheader("➕ Inserimento Dati")
     with st.form("form_carne", clear_on_submit=True):
         c1, c2, c3, c4 = st.columns(4)
         f_d = c1.selectbox("Turno", DATE_UFFICIALI)
         f_p = c2.selectbox("Prodotto", PRODOTTI)
-        f_q = c3.number_input("Pezzi Monitor", min_value=0, step=1)
-        f_h = c4.text_input("Ora", value=(datetime.now() + timedelta(hours=2)).strftime("%H:%M"))
-        if st.form_submit_button("REGISTRA"):
+        f_q = c3.number_input("Pezzi sul Monitor", min_value=0, step=1)
+        f_h = c4.text_input("Ora (HH:MM)", value=(datetime.now() + timedelta(hours=2)).strftime("%H:%M"))
+        if st.form_submit_button("REGISTRA DATO"):
             if save_data("Quantità Grigliate", [f_d, f_p, f_q, f_h]):
                 st.success("Dato Salvato!")
                 time.sleep(1)
@@ -73,15 +71,25 @@ with st.container():
 
 st.divider()
 
-if not df_q.empty:
-    # 2. GRAFICO TOTALE
-    st.subheader("🏆 Produzione Totale Sagra")
-    df_max_giorni = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
-    df_totale = df_max_giorni.groupby("Prodotto")["Quantita"].sum().reindex(PRODOTTI).fillna(0).reset_index()
-    st.plotly_chart(px.bar(df_totale, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, color_discrete_map=COLORI_CARNE), use_container_width=True)
+# --- 2. MODIFICA/ELIMINA DATI ---
+st.markdown("### ⚙️ 2. Modifica / Elimina Inserimenti")
+with st.expander("Visualizza Storico Inserimenti per correzioni"):
+    if not df_q.empty:
+        # Mostriamo gli ultimi 15 inserimenti (ordinati dal più recente)
+        for idx, row in df_q.iloc[::-1].head(15).iterrows():
+            col_t, col_b = st.columns([8, 2])
+            col_t.write(f"**{row['Giorno']}** | {row['Prodotto']} | {int(row['Quantita'])} pz | ore {row['Ora']}")
+            if col_b.button("Elimina", key=f"del_{idx}"):
+                if delete_row("Quantità Grigliate", idx):
+                    st.rerun()
+    else:
+        st.info("Nessun dato presente nel foglio.")
 
-    # 3. DETTAGLIO TURNI (Appaiono solo se il nome coincide con DATE_UFFICIALI)
-    st.subheader("🔍 Dettaglio per Singolo Turno")
+st.divider()
+
+# --- 3. GRAFICI DELLE GIORNATE ---
+st.markdown("### 🔍 3. Dettaglio Turni (Produzione e Ritmo)")
+if not df_q.empty:
     for g_uff in DATE_UFFICIALI:
         df_g = df_q[df_q["Giorno"] == g_uff].sort_values("Ora")
         if not df_g.empty:
@@ -92,24 +100,22 @@ if not df_q.empty:
             ca, cb = st.columns(2)
             with ca:
                 res = df_g.groupby("Prodotto")["Quantita"].max().reindex(PRODOTTI).fillna(0).reset_index()
-                st.plotly_chart(px.bar(res, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, color_discrete_map=COLORI_CARNE, height=250), use_container_width=True, key=f"b_{g_uff}")
+                st.plotly_chart(px.bar(res, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, 
+                                     color_discrete_map=COLORI_CARNE, height=280), use_container_width=True, key=f"b_{g_uff}")
             with cb:
-                st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, color_discrete_map=COLORI_CARNE, height=250), use_container_width=True, key=f"l_{g_uff}")
-    
-    st.divider()
-    
-    # 4. SEZIONE MODIFICA/ELIMINA (Sempre visibile in fondo)
-    with st.expander("⚙️ Storico Dati e Cancellazione"):
-        st.write("Qui puoi vedere gli ultimi inserimenti e cancellare quelli sbagliati:")
-        # Mostriamo gli ultimi 20 inserimenti (dal più recente)
-        for idx, row in df_q.iloc[::-1].head(20).iterrows():
-            col1, col2 = st.columns([8, 2])
-            col1.write(f"**{row['Giorno']}** | {row['Prodotto']} | {int(row['Quantita'])} pz | ore {row['Ora']}")
-            if col2.button("Elimina", key=f"del_{idx}"):
-                if delete_row("Quantità Grigliate", idx):
-                    st.success("Eliminato!")
-                    time.sleep(1)
-                    st.rerun()
-
+                st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, 
+                                      color_discrete_map=COLORI_CARNE, height=280), use_container_width=True, key=f"l_{g_uff}")
+            st.markdown("---")
 else:
-    st.warning("Nessun dato presente nel foglio 'Quantità Grigliate'.")
+    st.warning("Inattesa di dati per generare i grafici giornalieri.")
+
+# --- 4. GRAFICI TOTALI ---
+st.markdown("### 🏆 4. Riepilogo Totale Sagra")
+if not df_q.empty:
+    df_max_giorni = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
+    df_totale = df_max_giorni.groupby("Prodotto")["Quantita"].sum().reindex(PRODOTTI).fillna(0).reset_index()
+    
+    st.plotly_chart(px.bar(df_totale, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, 
+                           color_discrete_map=COLORI_CARNE, height=450), use_container_width=True)
+else:
+    st.info("I totali appariranno quando verranno inseriti i dati.")
