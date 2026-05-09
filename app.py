@@ -1,3 +1,12 @@
+# ==========================================
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 01
+# ==========================================
+# Stato: STABILE
+# Caratteristiche: 
+# - Gauge Presenze: Arco unico, Colore dinamico, Threshold nera.
+# - Monitor Carne: Dettaglio turno + Totale Sagra con curve Spline.
+# ==========================================
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -10,7 +19,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 
 # --- 1. CONFIGURAZIONE GENERALE ---
-st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide")
+st.set_page_config(page_title="Portale Grigliatori 2026 - R1", layout="wide")
 
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycby7yJ-jjJYworKTL9w20Er0w_Av3U1xqUvLQi0oGlrYy70Sg1xK6BJysNGZIZlJ0DtM/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
@@ -86,15 +95,16 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
+            # Calcolo colori dinamici per Arco e Numero
             if count < target:
                 color_num = "#e76f51" 
-                color_step_1 = "#e76f51" 
+                color_step_1 = "#e76f51" # Arancio se sotto target
             elif count == target:
                 color_num = "#2a9d8f" 
-                color_step_1 = "#2a9d8f" 
+                color_step_1 = "#2a9d8f" # Verde se target raggiunto
             else:
                 color_num = "#1d3557" 
-                color_step_1 = "#2a9d8f" 
+                color_step_1 = "#2a9d8f" # Verde base (azzurro gestito dopo)
 
             c1, c2 = st.columns([1, 4])
             with c1:
@@ -105,7 +115,7 @@ with tab_presenze:
                     number = {'font': {'color': color_num, 'size': 26}},
                     gauge = {
                         'axis': {'range': [0, max_visual], 'visible': False},
-                        'bar': {'color': "rgba(0,0,0,0)"},
+                        'bar': {'color': "rgba(0,0,0,0)"}, # Barra invisibile per arco pulito
                         'bgcolor': "#eeeeee",
                         'borderwidth': 0,
                         'steps': [
@@ -165,7 +175,6 @@ with tab_carne:
                     st.plotly_chart(px.bar(res, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, 
                                          color_discrete_map=COLORI_CARNE, height=300, title="Totale Turno"), use_container_width=True, key=f"b_{g_uff}")
                 with cb:
-                    # Qui la spline c'è già
                     st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, 
                                           color_discrete_map=COLORI_CARNE, height=300, title="Andamento Orario", line_shape="spline"), use_container_width=True, key=f"l_{g_uff}")
 
@@ -173,7 +182,6 @@ with tab_carne:
     st.markdown("### 🏆 4. Riepilogo Totale Sagra")
     if not df_q.empty:
         df_max_per_turno = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
-        
         c_tot1, c_tot2 = st.columns(2)
         with c_tot1:
             df_sagra_totale = df_max_per_turno.groupby("Prodotto")["Quantita"].sum().reindex(PRODOTTI).fillna(0).reset_index()
@@ -183,7 +191,6 @@ with tab_carne:
             df_progresso = df_max_per_turno.copy()
             df_progresso["Giorno"] = pd.Categorical(df_progresso["Giorno"], categories=DATE_UFFICIALI, ordered=True)
             df_progresso = df_progresso.sort_values("Giorno")
-            # RIPRISTINATA SPLINE QUI SOTTO
             st.plotly_chart(px.line(df_progresso, x="Giorno", y="Quantita", color="Prodotto", markers=True,
                                    color_discrete_map=COLORI_CARNE, height=400, title="📈 Confronto tra Giornate",
                                    line_shape="spline"), use_container_width=True)
