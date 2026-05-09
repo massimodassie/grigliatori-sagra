@@ -9,7 +9,7 @@ import io
 import urllib.parse
 from datetime import datetime, timedelta
 
-# --- 1. CONFIGURAZIONE ---
+# --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Monitor Carne 2026", layout="wide")
 
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycby7yJ-jjJYworKTL9w20Er0w_Av3U1xqUvLQi0oGlrYy70Sg1xK6BJysNGZIZlJ0DtM/exec"
@@ -25,7 +25,6 @@ DATE_UFFICIALI = [
 PRODOTTI = ["Costicine", "Salsicce", "Braciole"]
 COLORI_CARNE = {"Costicine": "#FF0000", "Salsicce": "#00BFFF", "Braciole": "#000000"}
 
-# --- 2. FUNZIONI ---
 def load_data(url):
     try:
         r = requests.get(f"{url}&nocache={time.time()}", timeout=10)
@@ -40,76 +39,77 @@ def save_data(sheet, data):
         return res.status_code == 200
     except: return False
 
-# --- 3. LOGICA CARICAMENTO ---
-df_q = load_data(URL_CARNE)
+def delete_row(sheet, row_idx):
+    try:
+        url = f"{SCRIPT_URL}?sheet={urllib.parse.quote(sheet)}&deleteRow={int(row_idx) + 2}"
+        requests.get(url, timeout=10)
+        return True
+    except: return False
 
-# Pulizia e preparazione colonne
+# --- CARICAMENTO ---
+df_q = load_data(URL_CARNE)
 if not df_q.empty:
-    # Se il foglio ha meno di 4 colonne, aggiungiamo quelle mancanti
-    while len(df_q.columns) < 4:
-        df_q[f"Col_{len(df_q.columns)}"] = ""
+    while len(df_q.columns) < 4: df_q[f"Col_{len(df_q.columns)}"] = ""
     df_q.columns = ["Giorno", "Prodotto", "Quantita", "Ora"][:len(df_q.columns)]
     df_q["Quantita"] = pd.to_numeric(df_q["Quantita"], errors='coerce').fillna(0)
 
-# --- 4. INTERFACCIA ---
-st.title("🍖 Monitoraggio Carne")
+# --- INTERFACCIA ---
+st.title("🍖 Monitoraggio Carne Sagra")
 
-# --- SEMPRE VISIBILE: FINESTRA INSERIMENTO ---
-with st.expander("➕ CLICCA QUI PER INSERIRE NUOVI DATI", expanded=True):
-    ora_it = (datetime.now() + timedelta(hours=2)).strftime("%H:%M")
-    with st.form("form_nuovo_dato", clear_on_submit=True):
+# 1. SEZIONE INSERIMENTO (Sempre visibile)
+with st.container():
+    st.subheader("➕ Inserimento Dati")
+    with st.form("form_carne", clear_on_submit=True):
         c1, c2, c3, c4 = st.columns(4)
-        f_d = c1.selectbox("Giorno", DATE_UFFICIALI)
+        f_d = c1.selectbox("Turno", DATE_UFFICIALI)
         f_p = c2.selectbox("Prodotto", PRODOTTI)
         f_q = c3.number_input("Pezzi Monitor", min_value=0, step=1)
-        f_h = c4.text_input("Ora", value=ora_it)
+        f_h = c4.text_input("Ora", value=(datetime.now() + timedelta(hours=2)).strftime("%H:%M"))
         if st.form_submit_button("REGISTRA"):
             if save_data("Quantità Grigliate", [f_d, f_p, f_q, f_h]):
-                st.success("Registrato!")
+                st.success("Dato Salvato!")
                 time.sleep(1)
                 st.rerun()
 
 st.divider()
 
 if not df_q.empty:
-    # 5. TOTALE GENERALE (Somma dei massimi di ogni giorno)
-    st.subheader("🏆 Totale Generale Sagra")
-    # Logica per raggruppare anche se le date sono scritte leggermente diverse
-    df_max = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
-    df_tot = df_max.groupby("Prodotto")["Quantita"].sum().reindex(PRODOTTI).fillna(0).reset_index()
-    st.plotly_chart(px.bar(df_tot, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True,
-                           color_discrete_map=COLORI_CARNE), use_container_width=True)
+    # 2. GRAFICO TOTALE
+    st.subheader("🏆 Produzione Totale Sagra")
+    df_max_giorni = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
+    df_totale = df_max_giorni.groupby("Prodotto")["Quantita"].sum().reindex(PRODOTTI).fillna(0).reset_index()
+    st.plotly_chart(px.bar(df_totale, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, color_discrete_map=COLORI_CARNE), use_container_width=True)
 
-    # 6. GRAFICI SINGOLI TURNI
-    st.subheader("🔍 Dettaglio Turni")
-    
-    # Cerchiamo quali giorni della lista DATE_UFFICIALI sono presenti nel foglio
-    # Usiamo una ricerca flessibile: basta che la data ufficiale contenga il testo del foglio
-    giorni_presenti = df_q["Giorno"].unique()
-    
+    # 3. DETTAGLIO TURNI (Appaiono solo se il nome coincide con DATE_UFFICIALI)
+    st.subheader("🔍 Dettaglio per Singolo Turno")
     for g_uff in DATE_UFFICIALI:
-        # Filtriamo i dati che corrispondono a questo turno
-        df_g = df_q[df_q["Giorno"] == g_uff]
-        
+        df_g = df_q[df_q["Giorno"] == g_uff].sort_values("Ora")
         if not df_g.empty:
-            st.markdown(f"### 📅 {g_uff}")
-            df_g = df_g.sort_values("Ora")
-            # Calcolo Ritmo
-            df_g["Variazione"] = df_g.groupby("Prodotto")["Quantita"].diff().fillna(df_g["Quantita"])
-            df_g.loc[df_g["Variazione"] < 0, "Variazione"] = 0
+            st.markdown(f"#### 📅 {g_uff}")
+            df_g["Ritmo"] = df_g.groupby("Prodotto")["Quantita"].diff().fillna(df_g["Quantita"])
+            df_g.loc[df_g["Ritmo"] < 0, "Ritmo"] = 0
             
-            col_a, col_b = st.columns(2)
-            with col_a:
+            ca, cb = st.columns(2)
+            with ca:
                 res = df_g.groupby("Prodotto")["Quantita"].max().reindex(PRODOTTI).fillna(0).reset_index()
-                st.plotly_chart(px.bar(res, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True,
-                                     color_discrete_map=COLORI_CARNE, title="Pezzi Totali", height=250), use_container_width=True, key=f"b_{g_uff}")
-            with col_b:
-                st.plotly_chart(px.line(df_g, x="Ora", y="Variazione", color="Prodotto", markers=True,
-                                      color_discrete_map=COLORI_CARNE, title="Ritmo", height=250), use_container_width=True, key=f"l_{g_uff}")
-else:
-    st.warning("⚠️ Nessun dato trovato nel foglio 'Quantità Grigliate'. Inserisci il primo dato qui sopra.")
+                st.plotly_chart(px.bar(res, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, color_discrete_map=COLORI_CARNE, height=250), use_container_width=True, key=f"b_{g_uff}")
+            with cb:
+                st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, color_discrete_map=COLORI_CARNE, height=250), use_container_width=True, key=f"l_{g_uff}")
+    
+    st.divider()
+    
+    # 4. SEZIONE MODIFICA/ELIMINA (Sempre visibile in fondo)
+    with st.expander("⚙️ Storico Dati e Cancellazione"):
+        st.write("Qui puoi vedere gli ultimi inserimenti e cancellare quelli sbagliati:")
+        # Mostriamo gli ultimi 20 inserimenti (dal più recente)
+        for idx, row in df_q.iloc[::-1].head(20).iterrows():
+            col1, col2 = st.columns([8, 2])
+            col1.write(f"**{row['Giorno']}** | {row['Prodotto']} | {int(row['Quantita'])} pz | ore {row['Ora']}")
+            if col2.button("Elimina", key=f"del_{idx}"):
+                if delete_row("Quantità Grigliate", idx):
+                    st.success("Eliminato!")
+                    time.sleep(1)
+                    st.rerun()
 
-# --- DEBUG IN FONDO ---
-with st.expander("⚙️ Debug Dati (Se non vedi i grafici, controlla qui)"):
-    st.write("Cosa legge l'app dal foglio Google:")
-    st.dataframe(df_q)
+else:
+    st.warning("Nessun dato presente nel foglio 'Quantità Grigliate'.")
