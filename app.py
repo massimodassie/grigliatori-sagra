@@ -86,35 +86,34 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # Definizione Colore Lancetta e Testo
-            if count < target:
-                color_bar = "#e76f51" # Arancio
-                status_m = f"⚠️ TARGET KO: -{target-count}"
-            elif count == target:
-                color_bar = "#2a9d8f" # Verde
-                status_m = "✅ TARGET OK"
-            else:
-                color_bar = "#1d3557" # Blu Scuro (per la lancetta)
-                status_m = f"✅ TARGET OK (+{count-target})"
+            # Colore del numero centrale
+            if count < target: color_num = "#e76f51" # Arancio
+            elif count == target: color_num = "#2a9d8f" # Verde
+            else: color_num = "#1d3557" # Blu Scuro
 
             c1, c2 = st.columns([1, 4])
             with c1:
-                # Il massimo del grafico deve includere il count corrente
+                # Massimo dinamico per evitare che l'arco si chiuda o mostri grigio
                 max_visual = max(target, count) + 1
                 
                 fig = go.Figure(go.Indicator(
                     mode = "gauge+number",
                     value = count,
-                    number = {'font': {'color': color_bar, 'size': 26}},
+                    number = {'font': {'color': color_num, 'size': 26}},
                     gauge = {
                         'axis': {'range': [0, max_visual], 'visible': False},
-                        'bar': {'color': color_bar},
+                        'bar': {'color': "rgba(0,0,0,0)"}, # SPARISCE IL DOPPIO BINARIO
                         'bgcolor': "#eeeeee",
                         'borderwidth': 0,
                         'steps': [
-                            {'range': [0, target], 'color': "#2a9d8f"},     # Zona Verde (fino al target)
-                            {'range': [target, max_visual], 'color': "#00BFFF"} # Zona Azzurra (extra)
+                            {'range': [0, target], 'color': "#2a9d8f"},     # VERDE fino al target
+                            {'range': [target, max_visual], 'color': "#00BFFF"} # AZZURRO oltre
                         ],
+                        'threshold': { # Linea di riferimento per il valore attuale
+                            'line': {'color': "black", 'width': 3},
+                            'thickness': 0.8,
+                            'value': count
+                        }
                     }
                 ))
                 fig.update_layout(height=150, margin=dict(t=30, b=10, l=10, r=10))
@@ -122,7 +121,8 @@ with tab_presenze:
             
             with c2:
                 st.markdown(f"### {dt}")
-                st.markdown(f"**{status_m}** ({count}/{target})")
+                msg = f"✅ TARGET OK (+{count-target})" if count > target else ("✅ TARGET OK" if count == target else f"⚠️ TARGET KO: -{target-count}")
+                st.markdown(f"**{msg}** ({count}/{target})")
                 st.markdown(f"PRESENTI: {', '.join(presenti) if presenti else '*Nessuno*'}")
             st.divider()
 
