@@ -10,7 +10,7 @@ import base64
 from datetime import datetime
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.3
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.4
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
@@ -74,7 +74,6 @@ with tabs[0]:
         for d in DATE_UFFICIALI:
             pres = df_p[df_p.iloc[:, 1] == d].iloc[:, 0].tolist() if not df_p.empty else []
             v = len(pres)
-            diff = v - TARGET_PERSONE
             col_b = "#2eb0a2" if v >= TARGET_PERSONE else "#e67e5e"
             col_g, col_i = st.columns([1, 3])
             with col_g:
@@ -92,22 +91,34 @@ with tabs[0]:
                 st.write(f"**PRESENTI:** {', '.join(pres)}")
             st.write("---")
 
-# --- TAB 2: MONITOR CARNE (IN PEZZI) ---
+# --- TAB 2: MONITOR CARNE (LOGICA R01) ---
 with tabs[1]:
-    st.subheader("🍖 Registrazione Pezzi Carne")
+    st.subheader("🍖 Gestione Pezzi Carne")
     with st.form("c_form"):
         f_d = st.selectbox("Turno", DATE_UFFICIALI)
-        f_p = st.selectbox("Tipo", PRODOTTI)
-        f_q = st.number_input("Numero di Pezzi", min_value=0, step=1)
-        if st.form_submit_button("Salva"):
+        f_p = st.selectbox("Tipo Carne", PRODOTTI)
+        f_q = st.number_input("Pezzi messi in griglia", min_value=0, step=1)
+        if st.form_submit_button("Registra Pezzi"):
             requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, datetime.now().strftime("%H:%M")]}))
-            st.success("Dato salvato!"); time.sleep(1); st.rerun()
+            st.success("Registrato!"); time.sleep(1); st.rerun()
     
     if not df_c.empty:
-        df_plot = df_c.copy()
-        df_plot.columns = ["Data", "Prodotto", "Qta", "Ora"]
-        df_plot["Qta"] = pd.to_numeric(df_plot["Qta"])
-        st.plotly_chart(px.line(df_plot, x="Ora", y="Qta", color="Prodotto", facet_col="Data", markers=True, title="Andamento Pezzi Grigliati"))
+        df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
+        df_c["Qta"] = pd.to_numeric(df_c["Qta"])
+        
+        # 1. Totali per Turno (Tabella)
+        st.write("### 📊 Totale Pezzi per Turno")
+        pivot = df_c.groupby(["Data", "Prodotto"])["Qta"].sum().unstack().fillna(0)
+        st.table(pivot)
+        
+        # 2. Grafico a Barre (Confronto)
+        st.write("### 📈 Confronto Produzione")
+        fig_bar = px.bar(df_c, x="Data", y="Qta", color="Prodotto", barmode="group", title="Pezzi per Turno")
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        # 3. Storico Inserimenti (L'ora che mancava)
+        st.write("### 🕒 Storico Inserimenti (Dettaglio)")
+        st.dataframe(df_c.sort_values(by=["Data", "Ora"], ascending=False), use_container_width=True)
 
 # --- TAB 3: GALLERIA ---
 with tabs[2]:
@@ -124,36 +135,30 @@ with tabs[2]:
             with cols[i % 3]:
                 st.image(get_image_url(row.iloc[1]), use_container_width=True)
 
-# --- TAB 4: SISTEMA (GESTIONE ANAGRAFICA COMPLETA) ---
+# --- TAB 4: SISTEMA ---
 with tabs[3]:
-    st.subheader("⚙️ Gestione Grigliatori")
-    
-    # Aggiunta
-    with st.expander("➕ AGGIUNGI NUOVO NOME"):
+    st.subheader("⚙️ Gestione Anagrafica")
+    with st.expander("➕ AGGIUNGI GRIGLIATORE"):
         new_n = st.text_input("Nome e Cognome")
-        if st.button("Salva Nuovo"):
+        if st.button("Salva"):
             if new_n:
                 requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
-                st.success("Aggiunto!"); st.rerun()
+                st.rerun()
     
-    st.write("---")
-    st.write("### 📋 Lista Attuale / Elimina")
+    st.write("### 📋 Lista e Rimozione")
     if not df_n.empty:
         for idx, row in df_n.iterrows():
             col_n, col_b = st.columns([3, 1])
             col_n.text(row.iloc[0])
             if col_b.button("Elimina", key=f"del_{idx}"):
-                # Nota: Row index in Sheets è idx+2
-                requests.get(f"{SCRIPT_URL}?sheet=ListaGrigliatori&deleteRow={idx+2}")
-                st.warning(f"Eliminato {row.iloc[0]}"); time.sleep(1); st.rerun()
+                requests.get(f"{SCRIPT_URL}?sheet=ListaGrigliatori&deleteRow={idx[0]+2}")
+                st.rerun()
 
 # --- TAB 5: INFO RELEASE ---
 with tabs[4]:
-    st.subheader("📜 Release Note")
-    st.info("Release: **04.3**")
+    st.subheader("📜 Storico")
     st.markdown("""
-    - **v04.3**: Ripristinato inserimento in **Pezzi** per la carne.
-    - **v04.3**: Aggiunta visualizzazione e **cancellazione** nomi nel tab Sistema.
-    - **v04.2**: Fix errore duplicazione grafici (ID univoci).
-    - **v04.1**: Layout Gauge originale (Sfondo Azzurro / Barra Smeraldo-Rosso).
+    - **v04.4**: Ripristinata logica Tab Carne (Tabella totali, Grafico barre, Ora inserimento).
+    - **v04.3**: Sistemata anagrafica (visualizzazione nomi ed eliminazione).
+    - **v04.1**: Fix Grafici Presenze (Sfondo Azzurro, Barra Smeraldo/Rossa).
     """)
