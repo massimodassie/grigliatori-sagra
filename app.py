@@ -9,18 +9,16 @@ import io
 import urllib.parse
 from datetime import datetime, timedelta
 
-# --- 1. CONFIGURAZIONE GENERALE ---
+# --- CONFIGURAZIONE ---
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide")
 
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycby7yJ-jjJYworKTL9w20Er0w_Av3U1xqUvLQi0oGlrYy70Sg1xK6BJysNGZIZlJ0DtM/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
-# Endpoint Fogli
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
 URL_CARNE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=" + urllib.parse.quote("Quantità Grigliate")
 URL_NOMI = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=ListaGrigliatori"
 
-# Costanti Blindate
 DATE_UFFICIALI = [
     "Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena",
     "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", 
@@ -30,7 +28,7 @@ DATE_UFFICIALI = [
 PRODOTTI = ["Costicine", "Salsicce", "Braciole"]
 COLORI_CARNE = {"Costicine": "#FF0000", "Salsicce": "#00BFFF", "Braciole": "#000000"}
 
-# --- 2. FUNZIONI DI COMUNICAZIONE ---
+# --- FUNZIONI COMUNICAZIONE ---
 def load_data(url):
     try:
         r = requests.get(f"{url}&nocache={time.time()}", timeout=10)
@@ -52,8 +50,8 @@ def delete_row(sheet, row_idx):
         return True
     except: return False
 
-# --- 3. INTERFACCIA PRINCIPALE ---
-st.title("🔥 Portale Grigliatori Sagra 2026")
+# --- INTERFACCIA ---
+st.title("🔥 Portale Grigliatori 2026")
 tab_presenze, tab_carne, tab_impostazioni = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "⚙️ Gestione Nomi"])
 
 # --- TAB 1: PRESENZE ---
@@ -81,32 +79,47 @@ with tab_presenze:
                     st.rerun()
 
     st.divider()
-    st.subheader("📊 Stato Copertura (Obiettivo: Pranzo 5, Cena 6)")
+    st.subheader("📊 Stato Copertura Team")
     if not df_p.empty:
         for dt in DATE_UFFICIALI:
             presenti = df_p[df_p["Turno"].str.lower() == dt.lower()]["Nome"].unique().tolist()
-            count, target = len(presenti), (5 if "Pranzo" in dt else 6)
-            col_c = "#2a9d8f" if count >= target else "#e76f51"
+            presenti = [p for p in presenti if p and p != "nan"]
+            count = len(presenti)
+            target = 5 if "Pranzo" in dt else 7 # Nuovo Target: 7 per le cene
+            
+            # Logica Colori Dinamica
+            if count < target:
+                col_c = "#e76f51" # Arancione/Rosso (KO)
+                stato_txt = f"⚠️ TARGET KO: -{target - count}"
+            elif count == target:
+                col_c = "#2a9d8f" # Verde (OK Perfetto)
+                stato_txt = "✅ TARGET OK"
+            else:
+                col_c = "#1d3557" # Blu scuro (Oltre target)
+                stato_txt = f"✅ TARGET OK (+{count - target})"
             
             c1, c2 = st.columns([1, 4])
             with c1:
-                fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.7, marker_colors=[col_c, "#eeeeee"], showlegend=False, textinfo='none', sort=False))
-                fig.update_layout(height=70, margin=dict(t=0, b=0, l=0, r=0), annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=12, showarrow=False, font_color=col_c)])
+                fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.7, 
+                                     marker_colors=[col_c, "#eeeeee"], showlegend=False, 
+                                     textinfo='none', sort=False))
+                fig.update_layout(height=80, margin=dict(t=0, b=0, l=0, r=0), 
+                                annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=14, showarrow=False, font_color=col_c)])
                 st.plotly_chart(fig, use_container_width=True, key=f"pie_{dt}")
             with c2:
-                st.markdown(f"**{dt}**")
-                st.caption(f"{'✅ OK' if count>=target else '⚠️ MANCANO'} : {', '.join(presenti) if presenti else 'Nessuno'}")
+                st.markdown(f"### {dt}")
+                st.markdown(f"**{stato_txt}**")
+                st.markdown(f"PRESENTI: {', '.join(presenti) if presenti else '*Nessuno ancora*'}")
+            st.divider()
 
 # --- TAB 2: MONITOR CARNE ---
 with tab_carne:
-    # A. Caricamento e pulizia dati
     df_q = load_data(URL_CARNE)
     if not df_q.empty:
         while len(df_q.columns) < 4: df_q[f"Col_{len(df_q.columns)}"] = ""
         df_q.columns = ["Giorno", "Prodotto", "Quantita", "Ora"][:len(df_q.columns)]
         df_q["Quantita"] = pd.to_numeric(df_q["Quantita"], errors='coerce').fillna(0)
 
-    # 1. INSERIMENTO (IN ALTO)
     st.subheader("➕ 1. Inserimento Nuova Rilevazione")
     with st.form("form_carne", clear_on_submit=True):
         c1, c2, c3, c4 = st.columns(4)
@@ -120,20 +133,16 @@ with tab_carne:
                 time.sleep(1)
                 st.rerun()
 
-    # 2. MODIFICA (STORICO)
     st.subheader("⚙️ 2. Modifica / Elimina Dati")
-    with st.expander("Apri lo storico per cancellare inserimenti errati"):
+    with st.expander("Apri lo storico per cancellare"):
         if not df_q.empty:
             for idx, row in df_q.iloc[::-1].head(10).iterrows():
                 col_t, col_b = st.columns([8, 2])
                 col_t.write(f"**{row['Giorno']}** | {row['Prodotto']} | {int(row['Quantita'])}pz | ore {row['Ora']}")
                 if col_b.button("Elimina", key=f"del_q_{idx}"):
                     if delete_row("Quantità Grigliate", idx): st.rerun()
-        else: st.info("Nessun dato carne presente.")
 
     st.divider()
-
-    # 3. GRAFICI DELLE GIORNATE (CON SPLINE)
     st.subheader("🔍 3. Dettaglio Giornaliero")
     if not df_q.empty:
         for g_uff in DATE_UFFICIALI:
@@ -142,7 +151,6 @@ with tab_carne:
                 st.markdown(f"#### 📅 {g_uff}")
                 df_g["Ritmo"] = df_g.groupby("Prodotto")["Quantita"].diff().fillna(df_g["Quantita"])
                 df_g.loc[df_g["Ritmo"] < 0, "Ritmo"] = 0
-                
                 ca, cb = st.columns(2)
                 with ca:
                     res = df_g.groupby("Prodotto")["Quantita"].max().reindex(PRODOTTI).fillna(0).reset_index()
@@ -151,9 +159,8 @@ with tab_carne:
                 with cb:
                     st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, 
                                           color_discrete_map=COLORI_CARNE, height=300, title="📈 Andamento Orario", line_shape="spline"), use_container_width=True, key=f"l_{g_uff}")
+                st.markdown("---")
 
-    # 4. GRAFICO TOTALE SAGRA (IN FONDO)
-    st.divider()
     st.subheader("🏆 4. Riepilogo Totale Sagra")
     if not df_q.empty:
         df_max_g = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
