@@ -86,7 +86,7 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            percentuale = min(100, (count / target) * 100)
+            # LOGICA COLORI DEFINITIVA
             if count < target:
                 col_c = "#e76f51" # Arancio
                 stato_txt = f"⚠️ TARGET KO: -{target - count}"
@@ -99,24 +99,19 @@ with tab_presenze:
             
             c1, c2 = st.columns([1, 4])
             with c1:
-                # Grafico Radiale Corretto e Semplificato
-                fig = go.Figure(go.Barpolar(
-                    r=[percentuale],
-                    theta=[0],
-                    width=[360],
-                    marker_color=col_c,
-                    hoverinfo='none'
+                # USO DI GAUGE: Molto più affidabile per i colori
+                fig = go.Figure(go.Indicator(
+                    mode = "gauge+number",
+                    value = count,
+                    number = {'font': {'size': 20, 'color': col_c}},
+                    gauge = {
+                        'axis': {'range': [0, max(count, target)], 'visible': False},
+                        'bar': {'color': col_c},
+                        'bgcolor': "#eeeeee",
+                    }
                 ))
-                fig.update_layout(
-                    polar=dict(
-                        hole=0.7,
-                        radialaxis=dict(visible=False, range=[0, 100]),
-                        angularaxis=dict(visible=False)
-                    ),
-                    height=100, margin=dict(t=5, b=5, l=5, r=5),
-                    annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=16, showarrow=False, font_color=col_c)]
-                )
-                st.plotly_chart(fig, use_container_width=True, key=f"rad_{dt}", config={'displayModeBar': False})
+                fig.update_layout(height=100, margin=dict(t=10, b=10, l=10, r=10))
+                st.plotly_chart(fig, use_container_width=True, key=f"gauge_{dt}", config={'displayModeBar': False})
             with c2:
                 st.markdown(f"### {dt}")
                 st.markdown(f"**{stato_txt}**")
