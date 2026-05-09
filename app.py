@@ -11,7 +11,7 @@ import urllib.parse
 from datetime import datetime
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 03.0 (COLORI A ZONE)
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 03.1 (FIX FOTO GALLERIA)
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
@@ -19,6 +19,20 @@ st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_ic
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm4aBkBr8MU259VV0HJvAUy_Y-dxnhqDhbUyaePEOzy/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 TARGET_PERSONE = 8 
+
+# --- FUNZIONE PER RENDERE LE FOTO DI DRIVE VISIBILI ---
+def convert_drive_url(url):
+    """Trasforma il link di Drive in un link diretto per Streamlit"""
+    if not isinstance(url, str): return url
+    if "drive.google.com" in url:
+        if "id=" in url:
+            file_id = url.split("id=")[1].split("&")[0]
+        elif "/file/d/" in url:
+            file_id = url.split("/file/d/")[1].split("/")[0]
+        else:
+            return url
+        return f"https://drive.google.com/uc?export=view&id={file_id}"
+    return url
 
 def get_csv_url(sheet_name):
     encoded_name = urllib.parse.quote(sheet_name)
@@ -44,19 +58,16 @@ def load_data(sheet_name):
 st.title("🔥 Portale Grigliatori Sagra 2026")
 tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Nomi"])
 
-# --- 1. TAB PRESENZE (COLORE A ZONE E NOMI) ---
+# --- 1. TAB PRESENZE ---
 with tabs[0]:
-    st.header("Turni Grigliatori")
     df_n = load_data("ListaGrigliatori")
     nomi_lista = sorted([n for n in df_n.iloc[:,0].unique() if n and n != "nan"]) if not df_n.empty else []
-    
     col1, col2 = st.columns([1, 3])
     with col1:
         user = st.selectbox("Chi sei?", [""] + nomi_lista)
         if user:
             df_p = load_data("Presenze")
             p_u = df_p[df_p.iloc[:,0] == user].iloc[:,1].tolist() if not df_p.empty else []
-            st.write("---")
             for d in DATE_UFFICIALI:
                 if st.checkbox(d, value=(d in p_u), key=f"p_{d}"):
                     if d not in p_u:
@@ -67,7 +78,6 @@ with tabs[0]:
                     if idx_list:
                         requests.get(f"{SCRIPT_URL}?sheet=Presenze&deleteRow={idx_list[0]+2}")
                         st.rerun()
-
     with col2:
         df_all = load_data("Presenze")
         if not df_all.empty:
@@ -75,35 +85,24 @@ with tabs[0]:
             for i, d in enumerate(DATE_UFFICIALI):
                 presenti_turno = df_all[df_all.iloc[:,1] == d].iloc[:,0].tolist()
                 v = len(presenti_turno)
-                
                 with cg[i % 2]:
-                    # LOGICA DOPPIO COLORE: Usiamo 'steps' per colorare lo sfondo della barra
                     fig = go.Figure(go.Indicator(
-                        mode="gauge+number",
-                        value=v,
+                        mode="gauge+number", value=v,
                         title={'text': f"<b>{d}</b>", 'font': {'size': 16, 'color': 'black'}},
                         gauge={
-                            'axis': {'range': [0, 15], 'tickwidth': 1, 'tickcolor': "black"},
-                            'bar': {'color': "black", 'thickness': 0.25}, # Ago/Barra sottile nera
+                            'axis': {'range': [0, 15], 'tickwidth': 1},
+                            'bar': {'color': "black", 'thickness': 0.25},
                             'bgcolor': "#eeeeee",
                             'steps': [
-                                {'range': [0, TARGET_PERSONE], 'color': "#FF8C00"}, # Arancio fino al target
-                                {'range': [TARGET_PERSONE, 15], 'color': "#228B22"} # Verde oltre il target
+                                {'range': [0, TARGET_PERSONE], 'color': "#FF8C00"},
+                                {'range': [TARGET_PERSONE, 15], 'color': "#228B22"}
                             ],
-                            'threshold': {
-                                'line': {'color': "red", 'width': 4},
-                                'thickness': 0.8,
-                                'value': TARGET_PERSONE
-                            }
+                            'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.8, 'value': TARGET_PERSONE}
                         }
                     ))
                     fig.update_layout(height=230, margin=dict(l=30, r=30, t=60, b=10), paper_bgcolor="rgba(0,0,0,0)")
                     st.plotly_chart(fig, use_container_width=True)
-                    
-                    if presenti_turno:
-                        st.info(f"👥 **Presenti ({v}):** {', '.join(presenti_turno)}")
-                    else:
-                        st.caption("Nessuno ancora segnato")
+                    if presenti_turno: st.info(f"👥 **Presenti ({v}):** {', '.join(presenti_turno)}")
                     st.write("---")
 
 # --- 2. TAB MONITOR CARNE ---
@@ -115,16 +114,14 @@ with tabs[1]:
         f_q = c3.number_input("KG", min_value=0.0, step=0.5)
         if st.form_submit_button("Registra"):
             requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, datetime.now().strftime("%H:%M")]}))
-            st.success("Dato salvato!")
-            st.rerun()
-    
+            st.success("Dato salvato!"); st.rerun()
     df_c = load_data("Quantità Grigliate")
     if not df_c.empty:
         df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
         df_c["Qta"] = pd.to_numeric(df_c["Qta"])
         st.plotly_chart(px.line(df_c, x="Ora", y="Qta", color="Prodotto", facet_col="Data", markers=True), use_container_width=True)
 
-# --- 3. TAB GALLERIA ---
+# --- 3. TAB GALLERIA (FIXED VISUALIZZAZIONE) ---
 with tabs[2]:
     with st.expander("➕ CARICA FOTO"):
         u_d = st.selectbox("Data", DATE_UFFICIALI, key="g_d")
@@ -145,10 +142,13 @@ with tabs[2]:
     df_g = load_data("Galleria")
     if not df_g.empty:
         df_g.columns = ["Data", "Link", "Desc"][:len(df_g.columns)]
+        st.write("---")
         cols = st.columns(3)
         for i, row in df_g.iterrows():
             with cols[i % 3]:
-                st.image(row["Link"], caption=f"{row['Data']}: {row['Desc']}", use_container_width=True)
+                # QUI APPLICHIAMO LA CONVERSIONE DEL LINK
+                img_url = convert_drive_url(row["Link"])
+                st.image(img_url, caption=f"{row['Data']}: {row['Desc']}", use_container_width=True)
 
 # --- 4. TAB GESTIONE NOMI ---
 with tabs[3]:
@@ -156,5 +156,4 @@ with tabs[3]:
     if st.button("Salva Nome"):
         if new_n:
             requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
-            st.success(f"{new_n} aggiunto!")
-            st.rerun()
+            st.success(f"{new_n} aggiunto!"); st.rerun()
