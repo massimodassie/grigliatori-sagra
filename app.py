@@ -2,9 +2,8 @@
 # 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 01
 # ==========================================
 # Stato: STABILE
-# Caratteristiche: 
-# - Gauge Presenze: Arco unico, Colore dinamico, Threshold nera.
-# - Monitor Carne: Dettaglio turno + Totale Sagra con curve Spline.
+# Autore: Massimo Dassie
+# Data: 09/05/2026
 # ==========================================
 
 import streamlit as st
@@ -61,7 +60,7 @@ def delete_row(sheet, row_idx):
 
 # --- 3. INTERFACCIA ---
 st.title("🔥 Portale Grigliatori Sagra 2026")
-tab_presenze, tab_carne, tab_impostazioni = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "⚙️ Gestione Nomi"])
+tab_presenze, tab_carne, tab_impostazioni, tab_info = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "⚙️ Gestione Nomi", "ℹ️ Info"])
 
 # --- TAB 1: PRESENZE ---
 with tab_presenze:
@@ -95,16 +94,15 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # Calcolo colori dinamici per Arco e Numero
             if count < target:
                 color_num = "#e76f51" 
-                color_step_1 = "#e76f51" # Arancio se sotto target
+                color_step_1 = "#e76f51" 
             elif count == target:
                 color_num = "#2a9d8f" 
-                color_step_1 = "#2a9d8f" # Verde se target raggiunto
+                color_step_1 = "#2a9d8f" 
             else:
                 color_num = "#1d3557" 
-                color_step_1 = "#2a9d8f" # Verde base (azzurro gestito dopo)
+                color_step_1 = "#2a9d8f" 
 
             c1, c2 = st.columns([1, 4])
             with c1:
@@ -115,7 +113,7 @@ with tab_presenze:
                     number = {'font': {'color': color_num, 'size': 26}},
                     gauge = {
                         'axis': {'range': [0, max_visual], 'visible': False},
-                        'bar': {'color': "rgba(0,0,0,0)"}, # Barra invisibile per arco pulito
+                        'bar': {'color': "rgba(0,0,0,0)"},
                         'bgcolor': "#eeeeee",
                         'borderwidth': 0,
                         'steps': [
@@ -210,3 +208,21 @@ with tab_impostazioni:
     nuovo = st.text_input("Aggiungi nuovo nome")
     if st.button("Aggiungi"):
         if nuovo and save_data("ListaGrigliatori", [nuovo]): st.rerun()
+
+# --- TAB 4: INFO (RELEASE LOG) ---
+with tab_info:
+    st.header("ℹ️ Informazioni Applicazione")
+    st.markdown("""
+    ### **Versione:** RELEASE 01 (Stabile)
+    **Data Rilascio:** 09 Maggio 2026  
+    **Autore:** Massimo Dassie  
+    
+    ---
+    #### **Note di rilascio:**
+    *   **Grafica:** Implementazione grafici a mezzaluna (Gauge) con colori dinamici (Arancio < Target, Verde = Target, Azzurro > Target).
+    *   **Presenze:** Gestione turni con database in tempo reale su Google Sheets.
+    *   **Monitor Carne:** Monitoraggio pezzi grigliati per turno e riepilogo totale Sagra con curve Spline.
+    *   **Anagrafica:** Gestione dinamica della lista grigliatori.
+    *   **Stabilità:** Corretto bug "doppio binario" nei grafici Plotly.
+    """)
+    st.success("Tutti i sistemi sono operativi. 🔥")
