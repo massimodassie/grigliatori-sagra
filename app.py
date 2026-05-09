@@ -165,29 +165,28 @@ with tab_carne:
                     st.plotly_chart(px.bar(res, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, 
                                          color_discrete_map=COLORI_CARNE, height=300, title="Totale Turno"), use_container_width=True, key=f"b_{g_uff}")
                 with cb:
+                    # Qui la spline c'è già
                     st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, 
                                           color_discrete_map=COLORI_CARNE, height=300, title="Andamento Orario", line_shape="spline"), use_container_width=True, key=f"l_{g_uff}")
 
     st.divider()
     st.markdown("### 🏆 4. Riepilogo Totale Sagra")
     if not df_q.empty:
-        # Calcoliamo il massimo raggiunto per ogni prodotto in ogni singolo turno
         df_max_per_turno = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
         
         c_tot1, c_tot2 = st.columns(2)
         with c_tot1:
-            # Somma totale di tutti i massimi giornalieri
             df_sagra_totale = df_max_per_turno.groupby("Prodotto")["Quantita"].sum().reindex(PRODOTTI).fillna(0).reset_index()
             st.plotly_chart(px.bar(df_sagra_totale, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, 
                                    color_discrete_map=COLORI_CARNE, height=400, title="Somma Pezzi Sagra (Tutti i giorni)"), use_container_width=True)
         with c_tot2:
-            # Andamento cumulativo o giornaliero globale
             df_progresso = df_max_per_turno.copy()
             df_progresso["Giorno"] = pd.Categorical(df_progresso["Giorno"], categories=DATE_UFFICIALI, ordered=True)
             df_progresso = df_progresso.sort_values("Giorno")
+            # RIPRISTINATA SPLINE QUI SOTTO
             st.plotly_chart(px.line(df_progresso, x="Giorno", y="Quantita", color="Prodotto", markers=True,
                                    color_discrete_map=COLORI_CARNE, height=400, title="📈 Confronto tra Giornate",
-                                   line_shape="linear"), use_container_width=True)
+                                   line_shape="spline"), use_container_width=True)
 
 # --- TAB 3: GESTIONE NOMI ---
 with tab_impostazioni:
