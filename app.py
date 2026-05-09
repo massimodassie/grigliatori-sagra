@@ -11,14 +11,14 @@ import urllib.parse
 from datetime import datetime
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 02.8 (FIX GRAFICI)
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 02.9 (FULL DASHBOARD)
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
 
-# --- CONFIGURAZIONE URL ---
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm4aBkBr8MU259VV0HJvAUy_Y-dxnhqDhbUyaePEOzy/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
+TARGET_PERSONE = 8  # Obiettivo minimo di grigliatori per turno
 
 def get_csv_url(sheet_name):
     encoded_name = urllib.parse.quote(sheet_name)
@@ -41,19 +41,17 @@ def load_data(sheet_name):
     except:
         return pd.DataFrame()
 
-# --- INTERFACCIA ---
 st.title("🔥 Portale Grigliatori Sagra 2026")
 tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Nomi"])
 
-# --- 1. TAB PRESENZE (FIX TITOLI E COLORI) ---
+# --- 1. TAB PRESENZE (CON TARGET E NOMI) ---
 with tabs[0]:
-    st.header("Turni Grigliatori")
     df_n = load_data("ListaGrigliatori")
-    nomi = sorted([n for n in df_n.iloc[:,0].unique() if n and n != "nan"]) if not df_n.empty else []
+    nomi_lista = sorted([n for n in df_n.iloc[:,0].unique() if n and n != "nan"]) if not df_n.empty else []
     
-    col1, col2 = st.columns([1, 3]) # Colonna grafici più larga
+    col1, col2 = st.columns([1, 3])
     with col1:
-        user = st.selectbox("Chi sei?", [""] + nomi)
+        user = st.selectbox("Chi sei?", [""] + nomi_lista)
         if user:
             df_p = load_data("Presenze")
             p_u = df_p[df_p.iloc[:,0] == user].iloc[:,1].tolist() if not df_p.empty else []
@@ -64,38 +62,44 @@ with tabs[0]:
                         requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Presenze", "data": [user, d]}))
                         st.rerun()
                 elif d in p_u:
-                    # Logica eliminazione riga
                     idx_list = df_p[(df_p.iloc[:,0] == user) & (df_p.iloc[:,1] == d)].index.tolist()
                     if idx_list:
-                        idx = idx_list[0]
-                        requests.get(f"{SCRIPT_URL}?sheet=Presenze&deleteRow={idx+2}")
+                        requests.get(f"{SCRIPT_URL}?sheet=Presenze&deleteRow={idx_list[0]+2}")
                         st.rerun()
+
     with col2:
         df_all = load_data("Presenze")
         if not df_all.empty:
-            counts = df_all.iloc[:,1].value_counts()
             cg = st.columns(2)
             for i, d in enumerate(DATE_UFFICIALI):
+                # Filtra i nomi dei presenti per questo turno
+                presenti_turno = df_all[df_all.iloc[:,1] == d].iloc[:,0].tolist()
+                v = len(presenti_turno)
+                
                 with cg[i % 2]:
-                    v = int(counts.get(d, 0))
                     fig = go.Figure(go.Indicator(
-                        mode="gauge+number", 
-                        value=v, 
+                        mode="gauge+number",
+                        value=v,
                         title={'text': f"<b>{d}</b>", 'font': {'size': 16, 'color': 'black'}},
                         gauge={
                             'axis': {'range': [0, 15], 'tickwidth': 1, 'tickcolor': "black"},
-                            'bar': {'color': "darkgreen" if v >= 6 else "orange"}, # Verde se siamo in 6 o più
-                            'bgcolor': "white",
-                            'borderwidth': 2,
-                            'bordercolor': "gray"
+                            'bar': {'color': "darkgreen" if v >= TARGET_PERSONE else "orange"},
+                            'threshold': {
+                                'line': {'color': "red", 'width': 4},
+                                'thickness': 0.75,
+                                'value': TARGET_PERSONE
+                            }
                         }
                     ))
-                    fig.update_layout(
-                        height=200, # Più alto per far stare il testo
-                        margin=dict(l=30, r=30, t=60, b=10),
-                        paper_bgcolor="rgba(0,0,0,0)"
-                    )
+                    fig.update_layout(height=220, margin=dict(l=30, r=30, t=50, b=10), paper_bgcolor="rgba(0,0,0,0)")
                     st.plotly_chart(fig, use_container_width=True)
+                    
+                    # MOSTRA I NOMI SOTTO IL GRAFICO
+                    if presenti_turno:
+                        st.caption(f"👥 **Presenti:** {', '.join(presenti_turno)}")
+                    else:
+                        st.caption("¯\\_(ツ)_/¯ Nessuno ancora segnato")
+                    st.write("---")
 
 # --- 2. TAB MONITOR CARNE ---
 with tabs[1]:
@@ -124,7 +128,7 @@ with tabs[2]:
         if st.button("CARICA"):
             if u_f:
                 b64 = base64.b64encode(u_f.read()).decode()
-                with st.spinner("Salvataggio su Drive..."):
+                with st.spinner("Invio su Drive..."):
                     res = requests.post(SCRIPT_URL, data=json.dumps({
                         "action": "upload_photo", "date": u_d, "description": u_c, 
                         "file_data": b64, "file_name": u_f.name
