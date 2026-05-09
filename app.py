@@ -11,17 +11,16 @@ import urllib.parse
 from datetime import datetime
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 02.5
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 02.6
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
 
 # --- CONFIGURAZIONE URL ---
-# Questo è il tuo ultimo URL funzionante
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyoaMP9w99bDPAXNITEwS7nN02hPZsPBf7S2Ie5UElW1mpjgXMr20HNNRDf_OfylZJZ/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwWGYXGZp9WbPmZUv2QRYNdxzBEQDD3HWYbMIi9BqpVfLYk5r80sDxqXub8QXB9mroz/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
-# URL per la lettura dei dati (CSV)
+# Endpoint Lettura CSV
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
 URL_CARNE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=" + urllib.parse.quote("Quantità Grigliate")
 URL_NOMI = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=ListaGrigliatori"
@@ -35,7 +34,7 @@ DATE_UFFICIALI = [
 ]
 PRODOTTI = ["Costicine", "Salsicce", "Braciole"]
 
-# --- FUNZIONI DI SUPPORTO ---
+# --- FUNZIONI DI SERVIZIO ---
 def load_data(url):
     try:
         r = requests.get(f"{url}&nocache={time.time()}", timeout=10)
@@ -44,23 +43,13 @@ def load_data(url):
     except:
         return pd.DataFrame()
 
-def convert_drive_url(url):
-    if "drive.google.com" in url:
-        if "/file/d/" in url:
-            file_id = url.split("/file/d/")[1].split("/")[0]
-            return f"https://drive.google.com/uc?export=view&id={file_id}"
-        elif "id=" in url:
-            file_id = url.split("id=")[1].split("&")[0]
-            return f"https://drive.google.com/uc?export=view&id={file_id}"
-    return url
-
-# --- INTERFACCIA PRINCIPALE ---
+# --- INTERFACCIA ---
 st.title("🔥 Portale Grigliatori Sagra 2026")
-tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Nomi"])
+tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Gestione Nomi"])
 
-# --- TAB 1: PRESENZE ---
+# --- 1. PRESENZE ---
 with tabs[0]:
-    st.header("Gestione Turni")
+    st.header("Turni Grigliatori")
     df_n = load_data(URL_NOMI)
     nomi = sorted([n for n in df_n.iloc[:,0].unique() if n and n != "nan"]) if not df_n.empty else []
     
@@ -88,21 +77,21 @@ with tabs[0]:
                 with cg[i % 2]:
                     v = int(counts.get(d, 0))
                     fig = go.Figure(go.Indicator(mode="gauge+number", value=v, title={'text': d, 'font':{'size':14}},
-                                   gauge={'axis':{'range':[0,10]}, 'bar':{'color':"orange"}}))
+                                   gauge={'axis':{'range':[0,10]}, 'bar':{'color':"red"}}))
                     fig.update_layout(height=150, margin=dict(l=15, r=15, t=40, b=10))
                     st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 2: CARNE ---
+# --- 2. CARNE ---
 with tabs[1]:
-    st.header("🍖 Registro Carne")
+    st.header("🍖 Registro Quantità")
     with st.form("carne_form"):
         c1, c2, c3 = st.columns(3)
         f_d = c1.selectbox("Turno", DATE_UFFICIALI)
-        f_p = c2.selectbox("Tipo", PRODOTTI)
+        f_p = c2.selectbox("Carne", PRODOTTI)
         f_q = c3.number_input("KG", min_value=0.0, step=0.5)
         if st.form_submit_button("Registra"):
             requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, datetime.now().strftime("%H:%M")]}))
-            st.success("Registrato!")
+            st.success("Dato salvato!")
             time.sleep(1)
             st.rerun()
     
@@ -112,18 +101,24 @@ with tabs[1]:
         df_c["Qta"] = pd.to_numeric(df_c["Qta"])
         st.plotly_chart(px.line(df_c, x="Ora", y="Qta", color="Prodotto", facet_col="Data", markers=True), use_container_width=True)
 
-# --- TAB 3: GALLERIA ---
+# --- 3. GALLERIA ---
 with tabs[2]:
     st.header("📸 Galleria Live")
-    with st.expander("➕ CARICA NUOVA FOTO"):
+    with st.expander("➕ CARICA FOTO"):
         u_d = st.selectbox("Data", DATE_UFFICIALI, key="g_d")
         u_c = st.text_input("Commento", key="g_c")
-        u_f = st.file_uploader("Scegli Immagine", type=['png', 'jpg', 'jpeg'])
-        if st.button("PUBBLICA"):
+        u_f = st.file_uploader("Scatta/Scegli", type=['png', 'jpg', 'jpeg'])
+        if st.button("CARICA"):
             if u_f:
                 b64 = base64.b64encode(u_f.read()).decode()
-                with st.spinner("Invio a Google Drive..."):
-                    res = requests.post(SCRIPT_URL, data=json.dumps({"action": "upload_photo", "date": u_d, "description": u_c, "file_data": b64, "file_name": u_f.name}))
+                with st.spinner("Salvataggio in corso..."):
+                    res = requests.post(SCRIPT_URL, data=json.dumps({
+                        "action": "upload_photo", 
+                        "date": u_d, 
+                        "description": u_c, 
+                        "file_data": b64, 
+                        "file_name": u_f.name
+                    }))
                     if "Success" in res.text:
                         st.success("Foto caricata!")
                         time.sleep(1)
@@ -136,12 +131,13 @@ with tabs[2]:
         cols = st.columns(3)
         for i, row in df_g.iterrows():
             with cols[i % 3]:
-                st.image(convert_drive_url(row["Link"]), caption=f"{row['Data']}: {row['Desc']}", use_container_width=True)
+                # Il link generato dal nuovo script è già nel formato 'uc?export=view'
+                st.image(row["Link"], caption=f"{row['Data']}: {row['Desc']}", use_container_width=True)
 
-# --- TAB 4: GESTIONE NOMI ---
+# --- 4. GESTIONE NOMI ---
 with tabs[3]:
-    st.header("⚙️ Nomi Grigliatori")
-    new_n = st.text_input("Nome nuovo")
-    if st.button("Aggiungi"):
+    st.header("⚙️ Nomi Team")
+    new_n = st.text_input("Aggiungi Nome")
+    if st.button("Salva Nome"):
         requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
         st.rerun()
