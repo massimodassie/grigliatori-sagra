@@ -86,35 +86,38 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # Definizione colore e testo
+            # Definizione Colore Lancetta e Testo
             if count < target:
-                color_c = "#e76f51" # Arancio
+                color_bar = "#e76f51" # Arancio
                 status_m = f"⚠️ TARGET KO: -{target-count}"
             elif count == target:
-                color_c = "#2a9d8f" # Verde
+                color_bar = "#2a9d8f" # Verde
                 status_m = "✅ TARGET OK"
             else:
-                color_c = "#1d3557" # Blu Scuro
+                color_bar = "#1d3557" # Blu Scuro (per la lancetta)
                 status_m = f"✅ TARGET OK (+{count-target})"
 
             c1, c2 = st.columns([1, 4])
             with c1:
-                # TRUCCO: Il range del gauge deve essere SEMPRE uguale al count se count > target
-                # Questo impedisce a Plotly di disegnare l'arco grigio di "sfondo"
-                max_gauge = max(target, count)
+                # Il massimo del grafico deve includere il count corrente
+                max_visual = max(target, count) + 1
                 
                 fig = go.Figure(go.Indicator(
                     mode = "gauge+number",
                     value = count,
-                    number = {'font': {'color': color_c, 'size': 26}},
+                    number = {'font': {'color': color_bar, 'size': 26}},
                     gauge = {
-                        'axis': {'range': [0, max_gauge], 'visible': False},
-                        'bar': {'color': color_c},
+                        'axis': {'range': [0, max_visual], 'visible': False},
+                        'bar': {'color': color_bar},
                         'bgcolor': "#eeeeee",
-                        'borderwidth': 0
+                        'borderwidth': 0,
+                        'steps': [
+                            {'range': [0, target], 'color': "#2a9d8f"},     # Zona Verde (fino al target)
+                            {'range': [target, max_visual], 'color': "#00BFFF"} # Zona Azzurra (extra)
+                        ],
                     }
                 ))
-                fig.update_layout(height=140, margin=dict(t=20, b=10, l=10, r=10))
+                fig.update_layout(height=150, margin=dict(t=30, b=10, l=10, r=10))
                 st.plotly_chart(fig, use_container_width=True, key=f"g_{dt}", config={'displayModeBar': False})
             
             with c2:
@@ -123,7 +126,7 @@ with tab_presenze:
                 st.markdown(f"PRESENTI: {', '.join(presenti) if presenti else '*Nessuno*'}")
             st.divider()
 
-# --- TAB 2: MONITOR CARNE (Invariato) ---
+# --- TAB 2: MONITOR CARNE ---
 with tab_carne:
     df_q = load_data(URL_CARNE)
     if not df_q.empty:
@@ -162,7 +165,7 @@ with tab_carne:
                     st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, 
                                           color_discrete_map=COLORI_CARNE, height=300, title="Andamento Orario", line_shape="spline"), use_container_width=True, key=f"l_{g_uff}")
 
-# --- TAB 3: GESTIONE NOMI (Invariato) ---
+# --- TAB 3: GESTIONE NOMI ---
 with tab_impostazioni:
     st.header("Gestione Anagrafica Grigliatori")
     df_n = load_data(URL_NOMI)
