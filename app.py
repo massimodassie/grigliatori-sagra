@@ -7,10 +7,10 @@ import json
 import time
 import io
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.5
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.7
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
@@ -18,6 +18,11 @@ st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_ic
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm4aBkBr8MU259VV0HJvAUy_Y-dxnhqDhbUyaePEOzy/exec"
 TARGET_PERSONE = 7 
+
+# --- FIX ORARIO ITALIA ---
+def get_it_time():
+    # Streamlit Cloud usa UTC. Italia è UTC+2 in estate (Maggio)
+    return (datetime.now() + timedelta(hours=2)).strftime("%H:%M")
 
 def load_data(sheet_name):
     try:
@@ -91,15 +96,16 @@ with tabs[0]:
                 st.write(f"**PRESENTI:** {', '.join(pres)}")
             st.write("---")
 
-# --- TAB 2: MONITOR CARNE (FULL R01 LOGIC) ---
+# --- TAB 2: MONITOR CARNE ---
 with tabs[1]:
     st.subheader("🍖 Inserimento Pezzi Carne")
-    with st.form("c_form_v2"):
+    with st.form("c_form_v4"):
         c_date, c_prod, c_qta, c_time = st.columns(4)
         f_d = c_date.selectbox("Turno", DATE_UFFICIALI)
         f_p = c_prod.selectbox("Tipo", PRODOTTI)
         f_q = c_qta.number_input("Pezzi", min_value=0, step=1)
-        f_t = c_time.text_input("Ora (HH:MM)", value=datetime.now().strftime("%H:%M"))
+        # USA IL FIX ORARIO ITALIA
+        f_t = c_time.text_input("Ora (HH:MM)", value=get_it_time())
         if st.form_submit_button("REGISTRA"):
             requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, f_t]}))
             st.success("Dato inserito!"); time.sleep(1); st.rerun()
@@ -109,38 +115,40 @@ with tabs[1]:
         df_c["Qta"] = pd.to_numeric(df_c["Qta"])
         
         st.write("---")
-        st.subheader("📊 Analisi per Turno")
+        st.subheader("📊 Analisi Dettagliata per Turno")
         for d in df_c["Data"].unique():
-            with st.expander(f"Dettaglio: {d}", expanded=True):
+            with st.expander(f"Dettaglio Turno: {d}", expanded=True):
                 df_turno = df_c[df_c["Data"] == d]
                 col_left, col_right = st.columns(2)
                 
                 with col_left:
-                    # Grafico Totali Turno
-                    fig_t = px.bar(df_turno.groupby("Prodotto")["Qta"].sum().reset_index(), 
-                                   x="Prodotto", y="Qta", color="Prodotto", title="Totali Pezzi")
+                    df_sum = df_turno.groupby("Prodotto")["Qta"].sum().reset_index()
+                    fig_t = px.bar(df_sum, x="Prodotto", y="Qta", color="Prodotto", 
+                                   text="Qta", title="Totali Pezzi")
+                    fig_t.update_traces(textposition='outside')
                     st.plotly_chart(fig_t, use_container_width=True, key=f"bar_{d}")
                 
                 with col_right:
-                    # Grafico Andamento Turno (Spline)
                     fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", 
-                                    line_shape="spline", markers=True, title="Andamento Temporale")
+                                    line_shape="spline", markers=True, title="Andamento (Spline)")
                     st.plotly_chart(fig_a, use_container_width=True, key=f"line_{d}")
 
         st.write("---")
         st.subheader("📈 Riepilogo Generale Sagra")
         c_tot1, c_tot2 = st.columns(2)
         with c_tot1:
-            st.write("**Pezzi Totali per Prodotto**")
-            fig_glob = px.pie(df_c, values="Qta", names="Prodotto", hole=0.4)
+            df_glob = df_c.groupby("Prodotto")["Qta"].sum().reset_index()
+            fig_glob = px.bar(df_glob, x="Prodotto", y="Qta", color="Prodotto", 
+                              text="Qta", title="Totale Sagra per Prodotto")
+            fig_glob.update_traces(textposition='outside')
             st.plotly_chart(fig_glob, use_container_width=True)
         with c_tot2:
-            st.write("**Andamento Giornate**")
-            fig_day = px.area(df_c.groupby(["Data", "Prodotto"])["Qta"].sum().reset_index(), 
-                             x="Data", y="Qta", color="Prodotto", line_shape="spline", title="Volume Totale per Giorno")
+            df_day = df_c.groupby(["Data", "Prodotto"])["Qta"].sum().reset_index()
+            fig_day = px.bar(df_day, x="Data", y="Qta", color="Prodotto", 
+                             title="Andamento Produzione per Giorno")
             st.plotly_chart(fig_day, use_container_width=True)
 
-# --- TAB 3, 4, 5 (INVARIATI E FUNZIONANTI) ---
+# --- TAB 3: GALLERIA ---
 with tabs[2]:
     st.subheader("📸 Galleria")
     with st.expander("➕ Carica Foto"):
@@ -155,6 +163,7 @@ with tabs[2]:
             with cols[i % 3]:
                 st.image(get_image_url(row.iloc[1]), use_container_width=True)
 
+# --- TAB 4: SISTEMA ---
 with tabs[3]:
     st.subheader("⚙️ Sistema")
     new_n = st.text_input("Aggiungi Nome")
@@ -171,7 +180,8 @@ with tabs[3]:
                 requests.get(f"{SCRIPT_URL}?sheet=ListaGrigliatori&deleteRow={idx[0]+2}")
                 st.rerun()
 
+# --- TAB 5: INFO RELEASE ---
 with tabs[4]:
     st.subheader("📜 Release Note")
-    st.info("Release: **04.5**")
-    st.markdown("- Inserimento Carne con **Ora manuale**.\n- Doppi grafici per turno (**Totale + Spline**).\n- Riepiloghi **Totali Sagra** a fondo pagina.")
+    st.info("Release: **04.7**")
+    st.markdown("- **Fix Orario**: Implementato offset UTC+2 per orario italiano corretto nel form carne.")
