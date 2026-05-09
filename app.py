@@ -10,7 +10,7 @@ import base64
 from datetime import datetime, timedelta
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.7
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.8
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
@@ -19,9 +19,7 @@ SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm4aBkBr8MU259VV0HJvAUy_Y-dxnhqDhbUyaePEOzy/exec"
 TARGET_PERSONE = 7 
 
-# --- FIX ORARIO ITALIA ---
 def get_it_time():
-    # Streamlit Cloud usa UTC. Italia è UTC+2 in estate (Maggio)
     return (datetime.now() + timedelta(hours=2)).strftime("%H:%M")
 
 def load_data(sheet_name):
@@ -56,7 +54,7 @@ df_c = load_data("Quantità Grigliate")
 
 tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Sistema", "ℹ️ Info Release"])
 
-# --- TAB 1: PRESENZE (BLINDATO) ---
+# --- TAB 1: PRESENZE ---
 with tabs[0]:
     c1, c2 = st.columns([1, 3])
     with c1:
@@ -99,12 +97,11 @@ with tabs[0]:
 # --- TAB 2: MONITOR CARNE ---
 with tabs[1]:
     st.subheader("🍖 Inserimento Pezzi Carne")
-    with st.form("c_form_v4"):
+    with st.form("c_form_v5"):
         c_date, c_prod, c_qta, c_time = st.columns(4)
         f_d = c_date.selectbox("Turno", DATE_UFFICIALI)
         f_p = c_prod.selectbox("Tipo", PRODOTTI)
         f_q = c_qta.number_input("Pezzi", min_value=0, step=1)
-        # USA IL FIX ORARIO ITALIA
         f_t = c_time.text_input("Ora (HH:MM)", value=get_it_time())
         if st.form_submit_button("REGISTRA"):
             requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, f_t]}))
@@ -115,22 +112,18 @@ with tabs[1]:
         df_c["Qta"] = pd.to_numeric(df_c["Qta"])
         
         st.write("---")
-        st.subheader("📊 Analisi Dettagliata per Turno")
+        st.subheader("📊 Analisi per Turno")
         for d in df_c["Data"].unique():
             with st.expander(f"Dettaglio Turno: {d}", expanded=True):
                 df_turno = df_c[df_c["Data"] == d]
                 col_left, col_right = st.columns(2)
-                
                 with col_left:
                     df_sum = df_turno.groupby("Prodotto")["Qta"].sum().reset_index()
-                    fig_t = px.bar(df_sum, x="Prodotto", y="Qta", color="Prodotto", 
-                                   text="Qta", title="Totali Pezzi")
+                    fig_t = px.bar(df_sum, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Totali Pezzi")
                     fig_t.update_traces(textposition='outside')
                     st.plotly_chart(fig_t, use_container_width=True, key=f"bar_{d}")
-                
                 with col_right:
-                    fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", 
-                                    line_shape="spline", markers=True, title="Andamento (Spline)")
+                    fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", line_shape="spline", markers=True, title="Andamento Turno")
                     st.plotly_chart(fig_a, use_container_width=True, key=f"line_{d}")
 
         st.write("---")
@@ -138,14 +131,13 @@ with tabs[1]:
         c_tot1, c_tot2 = st.columns(2)
         with c_tot1:
             df_glob = df_c.groupby("Prodotto")["Qta"].sum().reset_index()
-            fig_glob = px.bar(df_glob, x="Prodotto", y="Qta", color="Prodotto", 
-                              text="Qta", title="Totale Sagra per Prodotto")
+            fig_glob = px.bar(df_glob, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Totale Sagra")
             fig_glob.update_traces(textposition='outside')
             st.plotly_chart(fig_glob, use_container_width=True)
         with c_tot2:
+            # RITORNO ALLA SPLINE PER L'ANDAMENTO GIORNALIERO GENERALE
             df_day = df_c.groupby(["Data", "Prodotto"])["Qta"].sum().reset_index()
-            fig_day = px.bar(df_day, x="Data", y="Qta", color="Prodotto", 
-                             title="Andamento Produzione per Giorno")
+            fig_day = px.area(df_day, x="Data", y="Qta", color="Prodotto", line_shape="spline", title="Andamento Giornaliero (Spline)")
             st.plotly_chart(fig_day, use_container_width=True)
 
 # --- TAB 3: GALLERIA ---
@@ -183,5 +175,9 @@ with tabs[3]:
 # --- TAB 5: INFO RELEASE ---
 with tabs[4]:
     st.subheader("📜 Release Note")
-    st.info("Release: **04.7**")
-    st.markdown("- **Fix Orario**: Implementato offset UTC+2 per orario italiano corretto nel form carne.")
+    st.info("Release: **04.8**")
+    st.markdown("""
+    - **v04.8**: Ripristinato grafico **Andamento Giornaliero Sagra con Spline**.
+    - **v04.7**: Fix orario italiano (+2h) nel form carne.
+    - **v04.6**: Aggiunte etichette quantità fisse sui grafici a barre.
+    """)
