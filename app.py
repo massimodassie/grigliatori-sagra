@@ -11,13 +11,12 @@ import urllib.parse
 from datetime import datetime
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 02.7
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 02.8 (FIX GRAFICI)
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
 
-# --- CONFIGURAZIONE URL AGGIORNATA ---
-# Il tuo ultimo URL con accesso "Chiunque"
+# --- CONFIGURAZIONE URL ---
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm4aBkBr8MU259VV0HJvAUy_Y-dxnhqDhbUyaePEOzy/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 
@@ -46,26 +45,31 @@ def load_data(sheet_name):
 st.title("🔥 Portale Grigliatori Sagra 2026")
 tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Nomi"])
 
-# --- 1. PRESENZE ---
+# --- 1. TAB PRESENZE (FIX TITOLI E COLORI) ---
 with tabs[0]:
+    st.header("Turni Grigliatori")
     df_n = load_data("ListaGrigliatori")
     nomi = sorted([n for n in df_n.iloc[:,0].unique() if n and n != "nan"]) if not df_n.empty else []
     
-    col1, col2 = st.columns([1, 2])
+    col1, col2 = st.columns([1, 3]) # Colonna grafici più larga
     with col1:
         user = st.selectbox("Chi sei?", [""] + nomi)
         if user:
             df_p = load_data("Presenze")
             p_u = df_p[df_p.iloc[:,0] == user].iloc[:,1].tolist() if not df_p.empty else []
+            st.write("---")
             for d in DATE_UFFICIALI:
                 if st.checkbox(d, value=(d in p_u), key=f"p_{d}"):
                     if d not in p_u:
                         requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Presenze", "data": [user, d]}))
                         st.rerun()
                 elif d in p_u:
-                    idx = df_p[(df_p.iloc[:,0] == user) & (df_p.iloc[:,1] == d)].index[0]
-                    requests.get(f"{SCRIPT_URL}?sheet=Presenze&deleteRow={idx+2}")
-                    st.rerun()
+                    # Logica eliminazione riga
+                    idx_list = df_p[(df_p.iloc[:,0] == user) & (df_p.iloc[:,1] == d)].index.tolist()
+                    if idx_list:
+                        idx = idx_list[0]
+                        requests.get(f"{SCRIPT_URL}?sheet=Presenze&deleteRow={idx+2}")
+                        st.rerun()
     with col2:
         df_all = load_data("Presenze")
         if not df_all.empty:
@@ -74,12 +78,26 @@ with tabs[0]:
             for i, d in enumerate(DATE_UFFICIALI):
                 with cg[i % 2]:
                     v = int(counts.get(d, 0))
-                    fig = go.Figure(go.Indicator(mode="gauge+number", value=v, title={'text': d, 'font':{'size':12}},
-                                   gauge={'axis':{'range':[0,10]}, 'bar':{'color':"red"}}))
-                    fig.update_layout(height=140, margin=dict(l=10, r=10, t=30, b=10))
+                    fig = go.Figure(go.Indicator(
+                        mode="gauge+number", 
+                        value=v, 
+                        title={'text': f"<b>{d}</b>", 'font': {'size': 16, 'color': 'black'}},
+                        gauge={
+                            'axis': {'range': [0, 15], 'tickwidth': 1, 'tickcolor': "black"},
+                            'bar': {'color': "darkgreen" if v >= 6 else "orange"}, # Verde se siamo in 6 o più
+                            'bgcolor': "white",
+                            'borderwidth': 2,
+                            'bordercolor': "gray"
+                        }
+                    ))
+                    fig.update_layout(
+                        height=200, # Più alto per far stare il testo
+                        margin=dict(l=30, r=30, t=60, b=10),
+                        paper_bgcolor="rgba(0,0,0,0)"
+                    )
                     st.plotly_chart(fig, use_container_width=True)
 
-# --- 2. CARNE ---
+# --- 2. TAB MONITOR CARNE ---
 with tabs[1]:
     with st.form("carne_form"):
         c1, c2, c3 = st.columns(3)
@@ -97,7 +115,7 @@ with tabs[1]:
         df_c["Qta"] = pd.to_numeric(df_c["Qta"])
         st.plotly_chart(px.line(df_c, x="Ora", y="Qta", color="Prodotto", facet_col="Data", markers=True), use_container_width=True)
 
-# --- 3. GALLERIA ---
+# --- 3. TAB GALLERIA ---
 with tabs[2]:
     with st.expander("➕ CARICA FOTO"):
         u_d = st.selectbox("Data", DATE_UFFICIALI, key="g_d")
@@ -106,7 +124,7 @@ with tabs[2]:
         if st.button("CARICA"):
             if u_f:
                 b64 = base64.b64encode(u_f.read()).decode()
-                with st.spinner("Invio..."):
+                with st.spinner("Salvataggio su Drive..."):
                     res = requests.post(SCRIPT_URL, data=json.dumps({
                         "action": "upload_photo", "date": u_d, "description": u_c, 
                         "file_data": b64, "file_name": u_f.name
@@ -123,9 +141,11 @@ with tabs[2]:
             with cols[i % 3]:
                 st.image(row["Link"], caption=f"{row['Data']}: {row['Desc']}", use_container_width=True)
 
-# --- 4. GESTIONE NOMI ---
+# --- 4. TAB GESTIONE NOMI ---
 with tabs[3]:
-    new_n = st.text_input("Aggiungi Nome")
+    new_n = st.text_input("Aggiungi Nome Grigliatore")
     if st.button("Salva Nome"):
-        requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
-        st.rerun()
+        if new_n:
+            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
+            st.success(f"{new_n} aggiunto!")
+            st.rerun()
