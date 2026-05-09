@@ -9,7 +9,7 @@ import base64
 import urllib.parse
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 03.7
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 03.8
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide")
@@ -19,31 +19,31 @@ SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm
 
 def load_data(sheet_name):
     try:
-        # Forzo il refresh dei dati aggiungendo un timestamp all'URL
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}&t={int(time.time())}"
         r = requests.get(url, timeout=10)
-        if r.status_code != 200: return pd.DataFrame()
         df = pd.read_csv(io.StringIO(r.text)).fillna("")
         return df
     except Exception as e:
-        st.error(f"Errore caricamento {sheet_name}: {e}")
         return pd.DataFrame()
 
 def get_image_url(url):
-    """Trasforma il link di Drive in un link che Streamlit DEVE leggere"""
-    if "id=" in url:
-        f_id = url.split("id=")[1].split("&")[0]
-    elif "/d/" in url:
-        f_id = url.split("/d/")[1].split("/")[0]
-    else:
+    """Metodo thumbnail: il più leggero e compatibile per Drive"""
+    if not isinstance(url, str): return url
+    try:
+        if "id=" in url:
+            f_id = url.split("id=")[1].split("&")[0]
+        elif "/d/" in url:
+            f_id = url.split("/d/")[1].split("/")[0]
+        else: return url
+        return f"https://drive.google.com/thumbnail?id={f_id}&sz=w800"
+    except:
         return url
-    return f"https://drive.google.com/thumbnail?id={f_id}&sz=w1000"
 
 DATE_UFFICIALI = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Pranzo", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
 
 st.title("🔥 Monitor Grigliatori 2026")
 
-# CARICAMENTO DATI ALL'INIZIO
+# Caricamento centralizzato
 df_p = load_data("Presenze")
 df_n = load_data("ListaGrigliatori")
 df_g = load_data("Galleria")
@@ -58,50 +58,65 @@ with t1:
             nomi = sorted(df_n.iloc[:,0].unique().tolist())
             user = st.selectbox("Seleziona il tuo nome", [""] + nomi)
             if user:
-                # Logica salvataggio presenze (invariata)
-                st.info(f"Ciao {user}, seleziona i tuoi turni.")
+                p_u = df_p[df_p.iloc[:,0] == user].iloc[:,1].tolist() if not df_p.empty else []
+                for d in DATE_UFFICIALI:
+                    if st.checkbox(d, value=(d in p_u), key=f"chk_{d}"):
+                        if d not in p_u:
+                            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Presenze", "data": [user, d]}))
+                            st.rerun()
+                    elif d in p_u:
+                        # Cancellazione riga se deselezionato
+                        idx = df_p[(df_p.iloc[:,0] == user) & (df_p.iloc[:,1] == d)].index.tolist()
+                        if idx:
+                            requests.get(f"{SCRIPT_URL}?sheet=Presenze&deleteRow={idx[0]+2}")
+                            st.rerun()
         else:
-            st.warning("Lista nomi non caricata. Verifica il foglio 'ListaGrigliatori'")
+            st.error("Errore: Foglio 'ListaGrigliatori' non trovato o vuoto.")
 
     with col_sx:
         c_griglia = st.columns(2)
         for i, d in enumerate(DATE_UFFICIALI):
-            # RECUPERO NOMI PER QUESTO TURNO
             presenti_oggi = []
-            if not df_p.empty:
-                # Cerchiamo i nomi nella colonna 0 dove la colonna 1 corrisponde alla data
+            if not df_p.empty and df_p.shape[1] >= 2:
+                # Filtro: colonna 1 (Data) == d, prendi colonna 0 (Nome)
                 presenti_oggi = df_p[df_p.iloc[:, 1] == d].iloc[:, 0].tolist()
             
             with c_griglia[i % 2]:
-                # Grafico
                 v = len(presenti_oggi)
                 fig = go.Figure(go.Indicator(
                     mode="gauge+number", value=v,
-                    title={'text': d},
-                    gauge={'axis': {'range': [0, 15]}, 'bar': {'color': "black"},
-                           'steps': [{'range': [0, 8], 'color': "orange"}, {'range': [8, 15], 'color': "green"}]}
+                    title={'text': d, 'font': {'size': 14}},
+                    gauge={'axis': {'range': [0, 12]}, 'bar': {'color': "black"},
+                           'steps': [{'range': [0, 8], 'color': "orange"}, {'range': [8, 12], 'color': "green"}]}
                 ))
-                fig.update_layout(height=200, margin=dict(l=10, r=10, t=40, b=0))
+                fig.update_layout(height=180, margin=dict(l=10, r=10, t=40, b=0))
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # --- IL TAB NOMI (RIFATTO DA ZERO) ---
+                # BOX NOMI - Semplificato al massimo per evitare TypeError
                 if presenti_oggi:
-                    st.success(f"✅ **Presenti:** {', '.join(presenti_oggi)}")
+                    testo_nomi = ", ".join(presenti_oggi)
+                    st.success(f"Presenti: {testo_nomi}")
                 else:
-                    st.code("Nessun grigliatore segnato", icon="⚠️")
+                    st.warning("Nessun grigliatore segnato")
                 st.write("---")
 
 with t2:
-    st.header("📸 Galleria Live")
+    st.header("📸 Galleria")
     if not df_g.empty:
         g_cols = st.columns(3)
         for idx, row in df_g.iterrows():
-            with g_cols[idx % 3]:
-                link_foto = get_image_url(row.iloc[1]) # Colonna B
-                st.image(link_foto, caption=f"{row.iloc[0]}: {row.iloc[2]}", use_container_width=True)
+            if len(row) >= 2:
+                with g_cols[idx % 3]:
+                    url_f = get_image_url(row.iloc[1])
+                    st.image(url_f, use_container_width=True)
+                    st.caption(f"{row.iloc[0]} - {row.iloc[2]}")
     else:
-        st.info("Nessuna foto in galleria. Caricane una dal foglio Google!")
+        st.info("Galleria vuota.")
 
 with t3:
-    st.write("Gestione nomi...")
-    # (codice aggiunta nomi semplice)
+    st.subheader("Aggiungi Grigliatore")
+    nuovo = st.text_input("Nome e Cognome")
+    if st.button("Salva"):
+        if nuovo:
+            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [nuovo]}))
+            st.success("Aggiunto!"); time.sleep(1); st.rerun()
