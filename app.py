@@ -10,7 +10,7 @@ import base64
 from datetime import datetime
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.4
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.5
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
@@ -91,36 +91,56 @@ with tabs[0]:
                 st.write(f"**PRESENTI:** {', '.join(pres)}")
             st.write("---")
 
-# --- TAB 2: MONITOR CARNE (LOGICA R01) ---
+# --- TAB 2: MONITOR CARNE (FULL R01 LOGIC) ---
 with tabs[1]:
-    st.subheader("🍖 Gestione Pezzi Carne")
-    with st.form("c_form"):
-        f_d = st.selectbox("Turno", DATE_UFFICIALI)
-        f_p = st.selectbox("Tipo Carne", PRODOTTI)
-        f_q = st.number_input("Pezzi messi in griglia", min_value=0, step=1)
-        if st.form_submit_button("Registra Pezzi"):
-            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, datetime.now().strftime("%H:%M")]}))
-            st.success("Registrato!"); time.sleep(1); st.rerun()
+    st.subheader("🍖 Inserimento Pezzi Carne")
+    with st.form("c_form_v2"):
+        c_date, c_prod, c_qta, c_time = st.columns(4)
+        f_d = c_date.selectbox("Turno", DATE_UFFICIALI)
+        f_p = c_prod.selectbox("Tipo", PRODOTTI)
+        f_q = c_qta.number_input("Pezzi", min_value=0, step=1)
+        f_t = c_time.text_input("Ora (HH:MM)", value=datetime.now().strftime("%H:%M"))
+        if st.form_submit_button("REGISTRA"):
+            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, f_t]}))
+            st.success("Dato inserito!"); time.sleep(1); st.rerun()
     
     if not df_c.empty:
         df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
         df_c["Qta"] = pd.to_numeric(df_c["Qta"])
         
-        # 1. Totali per Turno (Tabella)
-        st.write("### 📊 Totale Pezzi per Turno")
-        pivot = df_c.groupby(["Data", "Prodotto"])["Qta"].sum().unstack().fillna(0)
-        st.table(pivot)
-        
-        # 2. Grafico a Barre (Confronto)
-        st.write("### 📈 Confronto Produzione")
-        fig_bar = px.bar(df_c, x="Data", y="Qta", color="Prodotto", barmode="group", title="Pezzi per Turno")
-        st.plotly_chart(fig_bar, use_container_width=True)
-        
-        # 3. Storico Inserimenti (L'ora che mancava)
-        st.write("### 🕒 Storico Inserimenti (Dettaglio)")
-        st.dataframe(df_c.sort_values(by=["Data", "Ora"], ascending=False), use_container_width=True)
+        st.write("---")
+        st.subheader("📊 Analisi per Turno")
+        for d in df_c["Data"].unique():
+            with st.expander(f"Dettaglio: {d}", expanded=True):
+                df_turno = df_c[df_c["Data"] == d]
+                col_left, col_right = st.columns(2)
+                
+                with col_left:
+                    # Grafico Totali Turno
+                    fig_t = px.bar(df_turno.groupby("Prodotto")["Qta"].sum().reset_index(), 
+                                   x="Prodotto", y="Qta", color="Prodotto", title="Totali Pezzi")
+                    st.plotly_chart(fig_t, use_container_width=True, key=f"bar_{d}")
+                
+                with col_right:
+                    # Grafico Andamento Turno (Spline)
+                    fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", 
+                                    line_shape="spline", markers=True, title="Andamento Temporale")
+                    st.plotly_chart(fig_a, use_container_width=True, key=f"line_{d}")
 
-# --- TAB 3: GALLERIA ---
+        st.write("---")
+        st.subheader("📈 Riepilogo Generale Sagra")
+        c_tot1, c_tot2 = st.columns(2)
+        with c_tot1:
+            st.write("**Pezzi Totali per Prodotto**")
+            fig_glob = px.pie(df_c, values="Qta", names="Prodotto", hole=0.4)
+            st.plotly_chart(fig_glob, use_container_width=True)
+        with c_tot2:
+            st.write("**Andamento Giornate**")
+            fig_day = px.area(df_c.groupby(["Data", "Prodotto"])["Qta"].sum().reset_index(), 
+                             x="Data", y="Qta", color="Prodotto", line_shape="spline", title="Volume Totale per Giorno")
+            st.plotly_chart(fig_day, use_container_width=True)
+
+# --- TAB 3, 4, 5 (INVARIATI E FUNZIONANTI) ---
 with tabs[2]:
     st.subheader("📸 Galleria")
     with st.expander("➕ Carica Foto"):
@@ -135,30 +155,23 @@ with tabs[2]:
             with cols[i % 3]:
                 st.image(get_image_url(row.iloc[1]), use_container_width=True)
 
-# --- TAB 4: SISTEMA ---
 with tabs[3]:
-    st.subheader("⚙️ Gestione Anagrafica")
-    with st.expander("➕ AGGIUNGI GRIGLIATORE"):
-        new_n = st.text_input("Nome e Cognome")
-        if st.button("Salva"):
-            if new_n:
-                requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
-                st.rerun()
-    
-    st.write("### 📋 Lista e Rimozione")
+    st.subheader("⚙️ Sistema")
+    new_n = st.text_input("Aggiungi Nome")
+    if st.button("Salva Nome"):
+        if new_n:
+            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
+            st.rerun()
+    st.write("---")
     if not df_n.empty:
         for idx, row in df_n.iterrows():
-            col_n, col_b = st.columns([3, 1])
-            col_n.text(row.iloc[0])
-            if col_b.button("Elimina", key=f"del_{idx}"):
+            cn, cb = st.columns([3, 1])
+            cn.text(row.iloc[0])
+            if cb.button("Elimina", key=f"del_{idx}"):
                 requests.get(f"{SCRIPT_URL}?sheet=ListaGrigliatori&deleteRow={idx[0]+2}")
                 st.rerun()
 
-# --- TAB 5: INFO RELEASE ---
 with tabs[4]:
-    st.subheader("📜 Storico")
-    st.markdown("""
-    - **v04.4**: Ripristinata logica Tab Carne (Tabella totali, Grafico barre, Ora inserimento).
-    - **v04.3**: Sistemata anagrafica (visualizzazione nomi ed eliminazione).
-    - **v04.1**: Fix Grafici Presenze (Sfondo Azzurro, Barra Smeraldo/Rossa).
-    """)
+    st.subheader("📜 Release Note")
+    st.info("Release: **04.5**")
+    st.markdown("- Inserimento Carne con **Ora manuale**.\n- Doppi grafici per turno (**Totale + Spline**).\n- Riepiloghi **Totali Sagra** a fondo pagina.")
