@@ -86,36 +86,38 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # Definizione Colore e Testo
+            # Calcolo Percentuale e Colore
+            percentuale = min(100, (count / target) * 100)
             if count < target:
-                color_main = "#e76f51" # Arancio (KO)
-                color_bg = "#eeeeee"
-                valori = [count, target - count]
+                col_c = "#e76f51" # Arancio
                 stato_txt = f"⚠️ TARGET KO: -{target - count}"
             elif count == target:
-                color_main = "#2a9d8f" # Verde (OK)
-                color_bg = "#2a9d8f"
-                valori = [count, 0]
+                col_c = "#2a9d8f" # Verde
                 stato_txt = "✅ TARGET OK"
             else:
-                color_main = "#1d3557" # Blu (Sopra)
-                color_bg = "#1d3557"
-                valori = [count, 0]
+                col_c = "#1d3557" # Blu Scuro
                 stato_txt = f"✅ TARGET OK (+{count - target})"
             
             c1, c2 = st.columns([1, 4])
             with c1:
-                fig = go.Figure(go.Pie(
-                    values=valori, 
-                    hole=0.7, 
-                    marker=dict(colors=[color_main, color_bg]),
-                    showlegend=False, 
-                    textinfo='none', 
-                    sort=False
+                # NUOVO GRAFICO RADIALE (Molto più stabile della Torta)
+                fig = go.Figure(go.Barpolar(
+                    r=[percentuale],
+                    theta=[0],
+                    width=[360],
+                    marker_color=col_c,
+                    hoverinfo='none'
                 ))
-                fig.update_layout(height=90, margin=dict(t=0, b=0, l=0, r=0), 
-                                annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=14, showarrow=False, font_color=color_main)])
-                st.plotly_chart(fig, use_container_width=True, key=f"pie_{dt}")
+                fig.update_layout(
+                    polar=dict(
+                        hole=0.7,
+                        radialaxis=dict(showtile=False, showgrid=False, showline=False, tickvals=[], range=[0, 100]),
+                        angularaxis=dict(showgrid=False, showline=False, tickvals=[])
+                    ),
+                    height=100, margin=dict(t=10, b=10, l=10, r=10),
+                    annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=14, showarrow=False, font_color=col_c)]
+                )
+                st.plotly_chart(fig, use_container_width=True, key=f"rad_{dt}")
             with c2:
                 st.markdown(f"### {dt}")
                 st.markdown(f"**{stato_txt}**")
@@ -173,24 +175,16 @@ with tab_carne:
 
     st.markdown("### 🏆 4. Riepilogo Totale Sagra")
     if not df_q.empty:
-        # Calcolo massimi giornalieri
         df_max_g = df_q.groupby(["Giorno", "Prodotto"])["Quantita"].max().reset_index()
-        
         c_tot1, c_tot2 = st.columns(2)
-        
         with c_tot1:
             df_sagra = df_max_g.groupby("Prodotto")["Quantita"].sum().reindex(PRODOTTI).fillna(0).reset_index()
             st.plotly_chart(px.bar(df_sagra, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, 
                                    color_discrete_map=COLORI_CARNE, height=400, title="Somma Totale Pezzi"), use_container_width=True)
-        
         with c_tot2:
-            # Nuovo grafico andamento per giorni
-            # Filtriamo solo i giorni che hanno dati
             df_days = df_max_g.copy()
-            # Ordiniamo i giorni secondo la lista ufficiale
             df_days["Giorno"] = pd.Categorical(df_days["Giorno"], categories=DATE_UFFICIALI, ordered=True)
             df_days = df_days.sort_values("Giorno")
-            
             st.plotly_chart(px.line(df_days, x="Giorno", y="Quantita", color="Prodotto", markers=True,
                                    color_discrete_map=COLORI_CARNE, height=400, title="📈 Andamento Giornaliero Sagra",
                                    line_shape="spline"), use_container_width=True)
