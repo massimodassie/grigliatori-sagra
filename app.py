@@ -81,8 +81,8 @@ with tab1:
             if st.toggle(t, value=presenza, key=f"p_{i}") != presenza:
                 if not presenza: save_data("Presenze", [user, t])
                 else: 
-                    idx = df_p[(df_p['Nome'] == user) & (df_p['Turno'] == t)].index[0]
-                    delete_row("Presenze", idx)
+                    match_idx = df_p[(df_p['Nome'] == user) & (df_p['Turno'] == t)].index
+                    if not match_idx.empty: delete_row("Presenze", match_idx[0])
                 st.rerun()
 
     st.divider()
@@ -95,14 +95,14 @@ with tab1:
             
             c_graf, c_nomi = st.columns([1, 2])
             with c_graf:
-                fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, 
+                fig_p = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.6, 
                                       marker_colors=["#2a9d8f", "#eeeeee"], showlegend=False, textinfo='none'))
-                fig.update_layout(height=150, margin=dict(t=0, b=0, l=0, r=0), 
-                                 annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=20, showarrow=False)])
-                st.plotly_chart(fig, use_container_width=True, key=f"pie_{t}")
+                fig_p.update_layout(height=120, margin=dict(t=5, b=5, l=5, r=5), 
+                                 annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=18, showarrow=False)])
+                st.plotly_chart(fig_p, use_container_width=True, key=f"pie_chart_{t}")
             with c_nomi:
                 st.markdown(f"**{t}**")
-                st.write(", ".join(presenti) if count > 0 else " nessuno ancora")
+                st.caption(", ".join(presenti) if count > 0 else "Nessuno ancora")
             st.markdown("---")
 
 # --- TAB 2: CARNE ---
@@ -124,58 +124,66 @@ with tab2:
     df_q = load_data(URL_MAGAZZINO)
     
     if not df_q.empty:
+        # Pulizia e preparazione dati
         df_q.columns = ['Giorno', 'Prodotto', 'Quantita', 'Ora'][:len(df_q.columns)]
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
         
-        # Calcolo variazioni
+        # Calcolo variazioni (incrementale)
         df_linee = df_q.sort_values(['Giorno', 'Prodotto', 'Ora'])
         df_linee['Variazione'] = df_linee.groupby(['Giorno', 'Prodotto'])['Quantita'].diff().fillna(df_linee['Quantita'])
         df_linee.loc[df_linee['Variazione'] < 0, 'Variazione'] = 0
 
-        # --- PRIMA I GRAFICI DELLE SINGOLE GIORNATE ---
+        # --- 1. GRAFICI DELLE SINGOLE GIORNATE (PRIMA) ---
         st.subheader("🔍 Dettaglio Produzione per Turno")
-        giorni_presenti = df_q['Giorno'].unique()
         
-        # Usiamo DATE_SOGLIA per mantenere l'ordine cronologico se possibile
-        for g in [d for d in DATE_SOGLIA if d in giorni_presenti]:
-            df_g = df_q[df_q['Giorno'] == g]
-            st.markdown(f"#### 📅 {g}")
-            c1, c2 = st.columns(2)
-            with c1:
-                df_b = df_g.groupby('Prodotto')['Quantita'].max().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-                st.plotly_chart(px.bar(df_b, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
-                                     color_discrete_map=COLOR_MAP, title="Pezzi Totali Turno", height=300), 
-                                use_container_width=True, key=f"bar_{g}")
-            with c2:
-                df_l = df_linee[df_linee['Giorno'] == g]
-                st.plotly_chart(px.line(df_l, x='Ora', y='Variazione', color='Prodotto', markers=True,
-                                      color_discrete_map=COLOR_MAP, title="Ritmo Produzione", height=300), 
-                                use_container_width=True, key=f"line_{g}")
-            st.divider()
+        # Prendiamo tutti i giorni presenti nei dati e ordiniamoli secondo DATE_SOGLIA
+        giorni_nel_db = df_q['Giorno'].unique().tolist()
+        giorni_ordinati = [d for d in DATE_SOGLIA if d in giorni_nel_db]
+        # Aggiungiamo eventuali giorni nel DB non presenti nella lista fissa
+        for g in giorni_nel_db:
+            if g not in giorni_ordinati: giorni_ordinati.append(g)
 
-        # --- INFINE IL TOTALE SAGRA ---
+        for g in giorni_ordinati:
+            df_g = df_q[df_q['Giorno'] == g]
+            if not df_g.empty:
+                st.markdown(f"#### 📅 {g}")
+                c1, c2 = st.columns(2)
+                with c1:
+                    df_b = df_g.groupby('Prodotto')['Quantita'].max().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+                    fig_b = px.bar(df_b, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
+                                 color_discrete_map=COLOR_MAP, title="Pezzi Totali Raggiunti", height=300)
+                    st.plotly_chart(fig_b, use_container_width=True, key=f"bar_plot_{g}")
+                with c2:
+                    df_l = df_linee[df_linee['Giorno'] == g]
+                    fig_l = px.line(df_l, x='Ora', y='Variazione', color='Prodotto', markers=True,
+                                  color_discrete_map=COLOR_MAP, title="Ritmo Produzione (Aggiunte)", height=300)
+                    st.plotly_chart(fig_l, use_container_width=True, key=f"line_plot_{g}")
+                st.markdown("---")
+
+        # --- 2. TOTALE SAGRA (ALLA FINE) ---
         st.markdown("""<div style="background-color:#ff4b4b; padding:15px; border-radius:10px; margin:40px 0 20px 0;">
-                    <h2 style="color:white; text-align:center; margin:0;">🏆 TOTALE GENERALE SAGRA (Somma dei Turni)</h2>
+                    <h2 style="color:white; text-align:center; margin:0;">🏆 TOTALE GENERALE SAGRA</h2>
                     </div>""", unsafe_allow_html=True)
         
+        # Somma dei massimi di ogni giornata
         df_max_day = df_q.groupby(['Giorno', 'Prodotto'])['Quantita'].max().reset_index()
         df_tot_sagra = df_max_day.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
         
         fig_global = px.bar(df_tot_sagra, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True,
                            color_discrete_map=COLOR_MAP)
         fig_global.update_layout(yaxis_title="Pezzi Totali", showlegend=False, height=450)
-        st.plotly_chart(fig_global, use_container_width=True)
+        st.plotly_chart(fig_global, use_container_width=True, key="global_total_chart")
 
     with col_de:
-        with st.expander("🗑️ Gestisci Inserimenti"):
+        with st.expander("🗑️ Gestisci/Elimina Inserimenti"):
             if not df_q.empty:
                 for idx, row in df_q.iterrows():
                     c_txt, c_btn = st.columns([7,3])
                     c_txt.write(f"**{row['Giorno']}** - {row['Prodotto']} ({int(row['Quantita'])} pz)")
-                    if c_btn.button("Elimina", key=f"del_q_{idx}"):
+                    if c_btn.button("Elimina", key=f"del_record_{idx}"):
                         if delete_row("Quantità Grigliate", idx): st.rerun()
 
-# --- TAB 3: GESTIONE ---
+# --- TAB 3: GESTIONE NOMI ---
 with tab3:
     st.header("⚙️ Gestione Team")
     df_n = load_data(URL_LISTA_NOMI)
@@ -183,9 +191,10 @@ with tab3:
         for i, row in df_n.iterrows():
             cx, cy = st.columns([8,2])
             cx.write(row.iloc[0])
-            if cy.button("X", key=f"rm_n_{i}"):
+            if cy.button("Rimuovi", key=f"rm_nome_{i}"):
                 if delete_row("ListaGrigliatori", i): st.rerun()
     
-    nome_n = st.text_input("Aggiungi nuovo nome")
-    if st.button("Aggiungi"):
+    st.divider()
+    nome_n = st.text_input("Aggiungi nuovo grigliatore")
+    if st.button("Salva Nuovo Nome"):
         if nome_n and save_data("ListaGrigliatori", [nome_n]): st.rerun()
