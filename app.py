@@ -86,44 +86,25 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # --- LOGICA COLORI E VALORI ANTI-GRIGIO ---
-            if count < target:
-                col_c = "#e76f51" # Arancio
-                valori_donut = [count, target - count]
-                colori_donut = [col_c, "#eeeeee"]
-                stato_txt = f"⚠️ TARGET KO: -{target - count}"
-            elif count == target:
-                col_c = "#2a9d8f" # Verde
-                valori_donut = [100] # Singolo valore = anello pieno
-                colori_donut = [col_c]
-                stato_txt = "✅ TARGET OK"
-            else:
-                col_c = "#1d3557" # Blu Scuro
-                valori_donut = [100] # Singolo valore = anello pieno
-                colori_donut = [col_c]
-                stato_txt = f"✅ TARGET OK (+{count - target})"
+            # Calcolo percentuale per la barra
+            percentuale = min(1.0, count / target)
             
-            c1, c2 = st.columns([1, 4])
-            with c1:
-                fig = go.Figure(data=[go.Pie(
-                    values=valori_donut,
-                    hole=0.75,
-                    marker=dict(colors=colori_donut, line=dict(color='white', width=0)),
-                    showlegend=False,
-                    textinfo='none',
-                    hoverinfo='none',
-                    sort=False
-                )])
-                fig.update_layout(
-                    height=130,
-                    margin=dict(t=0, b=0, l=0, r=0),
-                    annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=22, showarrow=False, font_color=col_c)]
-                )
-                st.plotly_chart(fig, use_container_width=True, key=f"donut_{dt}", config={'displayModeBar': False})
-            with c2:
-                st.markdown(f"### {dt}")
-                st.markdown(f"**{stato_txt}**")
-                st.markdown(f"PRESENTI: {', '.join(presenti) if presenti else '*Nessuno*'}")
+            # Scelta colore e messaggio
+            if count < target:
+                color_hex = "#e76f51" # Arancio
+                stato_txt = f"⚠️ TARGET KO: Mancano {target - count} persone"
+            elif count == target:
+                color_hex = "#2a9d8f" # Verde
+                stato_txt = "✅ TARGET OK: Copertura perfetta"
+            else:
+                color_hex = "#1d3557" # Blu Scuro
+                stato_txt = f"✅ TARGET OK: Extra copertura (+{count - target})"
+
+            # Visualizzazione con barre di progresso (Niente più cerchi grigi Plotly!)
+            st.markdown(f"#### {dt}")
+            st.markdown(f"<p style='color:{color_hex}; font-weight:bold; margin-bottom:0;'>{stato_txt} ({count}/{target})</p>", unsafe_allow_html=True)
+            st.progress(percentuale)
+            st.markdown(f"<small>PRESENTI: {', '.join(presenti) if presenti else 'Nessuno'}</small>", unsafe_allow_html=True)
             st.divider()
 
 # --- TAB 2: MONITOR CARNE ---
@@ -147,17 +128,8 @@ with tab_carne:
                 time.sleep(1)
                 st.rerun()
 
-    st.markdown("### ⚙️ 2. Modifica / Elimina Inserimenti")
-    with st.expander("Visualizza storico per correzioni"):
-        if not df_q.empty:
-            for idx, row in df_q.iloc[::-1].head(10).iterrows():
-                col_t, col_b = st.columns([8, 2])
-                col_t.write(f"**{row['Giorno']}** | {row['Prodotto']} | {int(row['Quantita'])}pz | ore {row['Ora']}")
-                if col_b.button("Elimina", key=f"del_q_{idx}"):
-                    if delete_row("Quantità Grigliate", idx): st.rerun()
-
     st.divider()
-    st.markdown("### 🔍 3. Dettaglio Turni (Produzione e Ritmo)")
+    st.markdown("### 🔍 3. Dettaglio Turni")
     if not df_q.empty:
         for g_uff in DATE_UFFICIALI:
             df_g = df_q[df_q["Giorno"] == g_uff].sort_values("Ora")
@@ -169,11 +141,10 @@ with tab_carne:
                 with ca:
                     res = df_g.groupby("Prodotto")["Quantita"].max().reindex(PRODOTTI).fillna(0).reset_index()
                     st.plotly_chart(px.bar(res, x="Prodotto", y="Quantita", color="Prodotto", text_auto=True, 
-                                         color_discrete_map=COLORI_CARNE, height=300, title="📊 Totale Giornaliero"), use_container_width=True, key=f"b_{g_uff}")
+                                         color_discrete_map=COLORI_CARNE, height=300, title="Totale Giornaliero"), use_container_width=True, key=f"b_{g_uff}")
                 with cb:
                     st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, 
-                                          color_discrete_map=COLORI_CARNE, height=300, title="📈 Andamento Orario", line_shape="spline"), use_container_width=True, key=f"l_{g_uff}")
-                st.markdown("---")
+                                          color_discrete_map=COLORI_CARNE, height=300, title="Andamento Orario", line_shape="spline"), use_container_width=True, key=f"l_{g_uff}")
 
     st.markdown("### 🏆 4. Riepilogo Totale Sagra")
     if not df_q.empty:
@@ -188,7 +159,7 @@ with tab_carne:
             df_days["Giorno"] = pd.Categorical(df_days["Giorno"], categories=DATE_UFFICIALI, ordered=True)
             df_days = df_days.sort_values("Giorno")
             st.plotly_chart(px.line(df_days, x="Giorno", y="Quantita", color="Prodotto", markers=True,
-                                   color_discrete_map=COLORI_CARNE, height=400, title="📈 Andamento Giornaliero Sagra",
+                                   color_discrete_map=COLORI_CARNE, height=400, title="Andamento Giornaliero Sagra",
                                    line_shape="spline"), use_container_width=True)
 
 # --- TAB 3: GESTIONE NOMI ---
