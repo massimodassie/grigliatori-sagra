@@ -86,14 +86,19 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # Colore del numero centrale
-            if count < target: color_num = "#e76f51" # Arancio
-            elif count == target: color_num = "#2a9d8f" # Verde
-            else: color_num = "#1d3557" # Blu Scuro
+            # --- LOGICA COLORI DINAMICA ---
+            if count < target:
+                color_num = "#e76f51" # Arancio
+                color_step_1 = "#e76f51" # L'arco diventa arancio se siamo sotto target
+            elif count == target:
+                color_num = "#2a9d8f" # Verde
+                color_step_1 = "#2a9d8f" # L'arco è verde se siamo a target
+            else:
+                color_num = "#1d3557" # Blu Scuro
+                color_step_1 = "#2a9d8f" # L'arco base resta verde, l'azzurro appare dopo
 
             c1, c2 = st.columns([1, 4])
             with c1:
-                # Massimo dinamico per evitare che l'arco si chiuda o mostri grigio
                 max_visual = max(target, count) + 1
                 
                 fig = go.Figure(go.Indicator(
@@ -102,14 +107,14 @@ with tab_presenze:
                     number = {'font': {'color': color_num, 'size': 26}},
                     gauge = {
                         'axis': {'range': [0, max_visual], 'visible': False},
-                        'bar': {'color': "rgba(0,0,0,0)"}, # SPARISCE IL DOPPIO BINARIO
+                        'bar': {'color': "rgba(0,0,0,0)"}, # Resta invisibile per pulizia
                         'bgcolor': "#eeeeee",
                         'borderwidth': 0,
                         'steps': [
-                            {'range': [0, target], 'color': "#2a9d8f"},     # VERDE fino al target
-                            {'range': [target, max_visual], 'color': "#00BFFF"} # AZZURRO oltre
+                            {'range': [0, target], 'color': color_step_1}, # ARANCIO o VERDE
+                            {'range': [target, max_visual], 'color': "#00BFFF"} # AZZURRO (extra)
                         ],
-                        'threshold': { # Linea di riferimento per il valore attuale
+                        'threshold': {
                             'line': {'color': "black", 'width': 3},
                             'thickness': 0.8,
                             'value': count
@@ -126,7 +131,7 @@ with tab_presenze:
                 st.markdown(f"PRESENTI: {', '.join(presenti) if presenti else '*Nessuno*'}")
             st.divider()
 
-# --- TAB 2: MONITOR CARNE ---
+# --- TAB 2 e 3 (Invariati) ---
 with tab_carne:
     df_q = load_data(URL_CARNE)
     if not df_q.empty:
@@ -165,7 +170,6 @@ with tab_carne:
                     st.plotly_chart(px.line(df_g, x="Ora", y="Ritmo", color="Prodotto", markers=True, 
                                           color_discrete_map=COLORI_CARNE, height=300, title="Andamento Orario", line_shape="spline"), use_container_width=True, key=f"l_{g_uff}")
 
-# --- TAB 3: GESTIONE NOMI ---
 with tab_impostazioni:
     st.header("Gestione Anagrafica Grigliatori")
     df_n = load_data(URL_NOMI)
