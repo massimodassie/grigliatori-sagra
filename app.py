@@ -10,20 +10,24 @@ import base64
 from datetime import datetime
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.1
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 04.2
 # ==========================================
 
+# 1. Configurazione Pagina
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide", page_icon="🔥")
 
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm4aBkBr8MU259VV0HJvAUy_Y-dxnhqDhbUyaePEOzy/exec"
 TARGET_PERSONE = 7 
 
+# 2. Funzioni di Caricamento
 def load_data(sheet_name):
     try:
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}&t={int(time.time())}"
         r = requests.get(url, timeout=10)
-        return pd.read_csv(io.StringIO(r.text)).fillna("")
+        if r.status_code == 200:
+            return pd.read_csv(io.StringIO(r.text)).fillna("")
+        return pd.DataFrame()
     except:
         return pd.DataFrame()
 
@@ -34,30 +38,34 @@ def get_image_url(url):
         return f"https://drive.google.com/thumbnail?id={f_id}&sz=w800"
     except: return url
 
+# 3. Date e Prodotti
 DATE_UFFICIALI = [
     "Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena",
     "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", 
     "Domenica 17 maggio - Pranzo", "Domenica 17 maggio - Cena",
     "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"
 ]
+PRODOTTI = ["Costicine", "Salsicce", "Braciole"]
 
+# 4. Header
 st.title("🔥 Portale Grigliatori 2026")
 
-# Caricamento centralizzato dei dati
+# Caricamento dati
 df_p = load_data("Presenze")
 df_n = load_data("ListaGrigliatori")
 df_g = load_data("Galleria")
 df_c = load_data("Quantità Grigliate")
 
+# 5. Struttura Tab
 tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Sistema", "ℹ️ Info Release"])
 
-# --- TAB 1: PRESENZE (Layout come Immagine 2026-05-09 114214_2.png) ---
+# --- TAB 1: PRESENZE ---
 with tabs[0]:
     c1, c2 = st.columns([1, 3])
     
     with c1:
         nomi = sorted(df_n.iloc[:,0].unique().tolist()) if not df_n.empty else []
-        user = st.selectbox("Chi sei?", [""] + nomi)
+        user = st.selectbox("Chi sei?", [""] + nomi, key="user_select")
         if user:
             p_u = df_p[df_p.iloc[:,0] == user].iloc[:,1].tolist() if not df_p.empty else []
             st.write("---")
@@ -78,7 +86,6 @@ with tabs[0]:
             v = len(presenti)
             diff = v - TARGET_PERSONE
             
-            # Colore barra: Verde Smeraldo se OK, Rosso/Arancio se KO
             color_barra = "#2eb0a2" if v >= TARGET_PERSONE else "#e67e5e"
             icona = "✅ TARGET OK" if v >= TARGET_PERSONE else "⚠️ TARGET KO"
             segno = f"(+{diff})" if diff > 0 else f"({diff})" if diff < 0 else ""
@@ -92,13 +99,14 @@ with tabs[0]:
                     gauge={
                         'axis': {'range': [0, 12], 'visible': False},
                         'bar': {'color': color_barra, 'thickness': 1},
-                        'bgcolor': "#00bfff", # Sfondo azzurro come richiesto
+                        'bgcolor': "#00bfff", 
                         'shape': "angular",
                         'threshold': {'line': {'color': "black", 'width': 3}, 'thickness': 0.8, 'value': TARGET_PERSONE}
                     }
                 ))
                 fig.update_layout(height=140, margin=dict(l=10, r=10, t=10, b=10))
-                st.plotly_chart(fig, use_container_width=True)
+                # Aggiunta KEY univoca per evitare StreamlitDuplicateElementId
+                st.plotly_chart(fig, use_container_width=True, key=f"gauge_{d}")
             
             with col_info:
                 st.subheader(d)
@@ -108,57 +116,60 @@ with tabs[0]:
 
 # --- TAB 2: MONITOR CARNE ---
 with tabs[1]:
-    st.subheader("🍖 Monitoraggio KG Carne")
+    st.subheader("🍖 Registrazione KG Carne")
     with st.form("carne_form"):
-        c_d, c_p, c_q = st.columns(3)
-        f_d = c_d.selectbox("Turno", DATE_UFFICIALI)
-        f_p = c_p.selectbox("Prodotto", ["Costicine", "Salsicce", "Braciole"])
-        f_q = c_q.number_input("KG Grigliati", min_value=0.0, step=0.5)
-        if st.form_submit_button("Registra"):
+        f_d = st.selectbox("Turno", DATE_UFFICIALI)
+        f_p = st.selectbox("Tipo Carne", PRODOTTI)
+        f_q = st.number_input("Chili (KG)", min_value=0.0, step=0.5)
+        if st.form_submit_button("Salva nel Database"):
             requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, datetime.now().strftime("%H:%M")]}))
-            st.success("Dato registrato!"); time.sleep(1); st.rerun()
+            st.success("Dato salvato!"); time.sleep(1); st.rerun()
     
     if not df_c.empty:
-        df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
-        df_c["Qta"] = pd.to_numeric(df_c["Qta"])
-        st.plotly_chart(px.line(df_c, x="Ora", y="Qta", color="Prodotto", facet_col="Data", markers=True), use_container_width=True)
+        try:
+            df_plot = df_c.copy()
+            df_plot.columns = ["Data", "Prodotto", "Qta", "Ora"]
+            df_plot["Qta"] = pd.to_numeric(df_plot["Qta"])
+            st.plotly_chart(px.line(df_plot, x="Ora", y="Qta", color="Prodotto", facet_col="Data", markers=True), use_container_width=True)
+        except:
+            st.warning("Dati carne non ancora pronti per il grafico.")
 
 # --- TAB 3: GALLERIA ---
 with tabs[2]:
-    st.subheader("📸 Galleria Fotografica")
-    with st.expander("➕ CARICA UNA FOTO"):
-        u_f = st.file_uploader("Seleziona immagine", type=['png', 'jpg', 'jpeg'])
-        u_c = st.text_input("Commento")
-        if st.button("Pubblica") and u_f:
+    st.subheader("📸 Galleria Foto Sagra")
+    with st.expander("➕ CARICA NUOVA FOTO"):
+        u_f = st.file_uploader("Scegli file", type=['png', 'jpg', 'jpeg'])
+        u_c = st.text_input("Breve descrizione")
+        if st.button("Invia Foto") and u_f:
             b64 = base64.b64encode(u_f.read()).decode()
             requests.post(SCRIPT_URL, data=json.dumps({"action": "upload_photo", "date": datetime.now().strftime("%d/%m"), "description": u_c, "file_data": b64, "file_name": u_f.name}))
-            st.success("Foto caricata!"); time.sleep(1); st.rerun()
+            st.success("Caricamento completato!"); time.sleep(1); st.rerun()
     
     if not df_g.empty:
         st.write("---")
-        cols = st.columns(3)
+        g_cols = st.columns(3)
         for i, row in df_g.iterrows():
-            with cols[i % 3]:
+            with g_cols[i % 3]:
                 st.image(get_image_url(row.iloc[1]), use_container_width=True)
                 st.caption(f"{row.iloc[0]} - {row.iloc[2]}")
 
 # --- TAB 4: SISTEMA ---
 with tabs[3]:
-    st.subheader("⚙️ Gestione Squadra")
-    new_n = st.text_input("Aggiungi nuovo grigliatore (Nome e Cognome)")
-    if st.button("Aggiungi"):
-        if new_n:
-            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
-            st.success("Nome aggiunto!"); st.rerun()
+    st.subheader("⚙️ Gestione Anagrafica")
+    nuovo_membro = st.text_input("Inserisci Nome e Cognome nuovo grigliatore")
+    if st.button("Aggiungi alla lista"):
+        if nuovo_membro:
+            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [nuovo_membro]}))
+            st.success(f"{nuovo_membro} aggiunto con successo!"); time.sleep(1); st.rerun()
 
 # --- TAB 5: INFO RELEASE ---
 with tabs[4]:
-    st.subheader("ℹ️ Storico Versioni")
-    st.info("**Versione Attuale: 04.1**")
+    st.subheader("📜 Storico Release Software")
+    st.info("Release Attuale: **04.2**")
     st.markdown("""
-    - **v04.1**: Ripristino layout grafico avanzato (Gauge bicolore Rosso/Smeraldo, sfondo azzurro).
-    - **v04.0**: Reintroduzione Tab Info Release e storico aggiornamenti.
-    - **v03.9**: Risoluzione bug critico visualizzazione foto Google Drive.
-    - **v03.5**: Ottimizzazione caricamento dati (no-cache).
-    - **v01.0**: Prima release monitor presenze.
+    - **v04.2**: Risolto errore `DuplicateElementId` nei grafici (ID univoci).
+    - **v04.1**: Fix grafico: sfondo azzurro, barra bicolore (Smeraldo/Rosso) e layout riga per riga.
+    - **v03.9**: Fix immagini: implementato sistema thumbnail per bypassare i blocchi Google Drive.
+    - **v03.0**: Aggiunta gestione Monitor Carne con grafici temporali.
+    - **v01.0**: Creazione portale e sincronizzazione con Google Sheets.
     """)
