@@ -169,153 +169,112 @@ with tab1:
             
             st.markdown("---")
 
-# --- TAB 2: CARNE ---
+# --- TAB 2: CARNE (UNITÀ DI MISURA: PEZZI) ---
 with tab2:
     st.header("🍖 Monitoraggio Produzione")
     
     col_inserimento, col_eliminazione = st.columns(2)
     
     with col_inserimento:
-        with st.expander("➕ Inserisci Nuova Quantità"):
+        with st.expander("➕ Inserisci Quantità (da Monitor)"):
+            st.info("Inserisci il numero totale di **pezzi** che vedi sul monitor. L'app calcolerà l'incremento rispetto all'ultima voce.")
             with st.form("carne_form"):
                 c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
                 f_data = c1.selectbox("Giorno", DATE_SOGLIA)
                 f_tipo = c2.selectbox("Cibo", PRODOTTI_ORDINE)
-                f_qta = c3.number_input("Kg", min_value=1)
+                f_qta = c3.number_input("Totale Pezzi", min_value=0, step=1)
                 f_ora = c4.text_input("Ora (HH:MM)", value=datetime.now().strftime("%H:%M"))
                 if st.form_submit_button("Salva 📝"):
                     if save_data("Quantità Grigliate", [f_data, f_tipo, f_qta, f_ora]): 
-                        st.success("Dato salvato!"); time.sleep(1); st.rerun()
+                        st.success("Pezzi salvati!"); time.sleep(1); st.rerun()
 
     df_q = load_data(URL_MAGAZZINO)
     
     with col_eliminazione:
-        with st.expander("✏️ Gestisci / Elimina Quantità Inserite"):
+        with st.expander("✏️ Gestisci / Elimina"):
             if not df_q.empty:
                 nomi_colonne_standard = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
                 mappa_colonne = {df_q.columns[i]: nomi_colonne_standard[i] for i in range(min(len(df_q.columns), 4))}
                 df_temp = df_q.rename(columns=mappa_colonne)
                 
-                st.write("Seleziona una riga per eliminarla:")
                 for idx, row in df_temp.iterrows():
-                    testo_riga = f"🗑️ {row['Giorno']} - {row['Prodotto']}: {row['Quantita']} Kg (ore {row['Ora']})"
+                    testo_riga = f"🗑️ {row['Giorno']} - {row['Prodotto']}: {int(float(row['Quantita']))} Pezzi (Monitor ore {row['Ora']})"
                     col_testo, col_cancella = st.columns([8, 2])
                     col_testo.write(testo_riga)
                     if col_cancella.button("Elimina", key=f"del_carne_{idx}"):
-                        with st.spinner("Eliminazione in corso..."):
-                            if delete_row("Quantità Grigliate", idx):
-                                st.success("Dato rimosso!"); time.sleep(1); st.rerun()
-            else:
-                st.info("Nessun dato inserito da poter eliminare.")
+                        if delete_row("Quantità Grigliate", idx): st.rerun()
+            else: st.info("Nessun dato presente.")
 
     if not df_q.empty:
         nomi_colonne_standard = ['Giorno', 'Prodotto', 'Quantita', 'Ora']
         mappa_colonne = {df_q.columns[i]: nomi_colonne_standard[i] for i in range(min(len(df_q.columns), 4))}
         df_q = df_q.rename(columns=mappa_colonne)
-        
         df_q['Quantita'] = pd.to_numeric(df_q['Quantita'], errors='coerce').fillna(0)
-        df_q['Ora'] = df_q['Ora'].astype(str).str.strip()
         
+        # LOGICA INCREMENTALE
+        df_diff = df_q.copy().sort_values(['Giorno', 'Prodotto', 'Ora'])
+        df_diff['Produzione_Effettiva'] = df_diff.groupby(['Giorno', 'Prodotto'])['Quantita'].diff().fillna(df_diff['Quantita'])
+        df_diff.loc[df_diff['Produzione_Effettiva'] < 0, 'Produzione_Effettiva'] = 0
+
         # ==========================================
         # GRAFICI GENERALI (TUTTA LA SAGRA)
         # ==========================================
         st.markdown("""<div style="background-color: #ff4b4b; padding: 12px; border-radius: 5px; margin: 25px 0 15px 0;">
-                        <h2 style="margin:0; color:#FFFFFF; text-align:center;">🏆 Riepilogo Generale Sagra</h2>
+                        <h2 style="margin:0; color:#FFFFFF; text-align:center;">🏆 Riepilogo Generale Sagra (Pezzi)</h2>
                      </div>""", unsafe_allow_html=True)
         
         tot_c_1, tot_c_2 = st.columns(2)
         
         with tot_c_1:
-            df_tot_prod = df_q.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-            fig_tot_sagra = px.bar(
-                df_tot_prod, 
-                x='Prodotto', 
-                y='Quantita', 
-                color='Prodotto', 
-                text_auto=True, 
-                title="📦 Totale Kg Grigliati (Tutta la Sagra)", 
-                color_discrete_map=COLOR_MAP
-            )
-            fig_tot_sagra.update_layout(showlegend=False, height=350)
-            st.plotly_chart(fig_tot_sagra, use_container_width=True, key="totale_sagra_barre")
+            df_tot_sagra = df_q.groupby(['Giorno', 'Prodotto'])['Quantita'].max().reset_index()
+            df_bar_tot = df_tot_sagra.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+            
+            fig_tot_sagra = px.bar(df_bar_tot, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, 
+                                   title="📦 Pezzi Totali Prodotti (Somma massimi giornalieri)", color_discrete_map=COLOR_MAP)
+            fig_tot_sagra.update_layout(showlegend=False, height=350, yaxis_title="Pezzi Totali")
+            st.plotly_chart(fig_tot_sagra, use_container_width=True)
             
         with tot_c_2:
-            # FILTRO ROBUSTO SULLE DATE: Rende il confronto immune a maiuscole, minuscole o spazi extra
             date_soglia_clean = [d.strip().lower() for d in DATE_SOGLIA]
-            df_filtro_date = df_q[df_q['Giorno'].astype(str).str.strip().str.lower().isin(date_soglia_clean)]
+            df_filtro_date = df_tot_sagra[df_tot_sagra['Giorno'].astype(str).str.strip().str.lower().isin(date_soglia_clean)]
             
             if not df_filtro_date.empty:
-                df_tot_giorni = df_filtro_date.groupby(['Giorno', 'Prodotto'])['Quantita'].sum().reset_index()
-                
-                fig_line_giorni = px.line(
-                    df_tot_giorni, 
-                    x='Giorno', 
-                    y='Quantita', 
-                    color='Prodotto', 
-                    markers=True, 
-                    title="📅 Andamento del Carico di Lavoro Giornaliero",
-                    color_discrete_map=COLOR_MAP,
-                    category_orders={"Giorno": DATE_SOGLIA}
-                )
-                fig_line_giorni.update_layout(
-                    xaxis_title="Giornata", 
-                    yaxis_title="Quantità Totale (Kg)", 
-                    height=350,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                st.plotly_chart(fig_line_giorni, use_container_width=True, key="totale_sagra_linee_giorni")
-            else:
-                st.info("In attesa di dati per calcolare l'andamento giornaliero.")
+                fig_line_giorni = px.line(df_filtro_date, x='Giorno', y='Quantita', color='Prodotto', markers=True, 
+                                          title="📅 Andamento Totale Pezzi per Giornata", color_discrete_map=COLOR_MAP,
+                                          category_orders={"Giorno": DATE_SOGLIA})
+                fig_line_giorni.update_layout(xaxis_title="Giornata", yaxis_title="Pezzi raggiunti", height=350)
+                st.plotly_chart(fig_line_giorni, use_container_width=True)
 
         st.divider()
 
         # ==========================================
         # DETTAGLIO DELLE SINGOLE GIORNATE
         # ==========================================
-        st.subheader("🔍 Dettaglio Produzione per Giornata")
+        st.subheader("🔍 Dettaglio Produzione Pezzi")
         
         for data_target in DATE_SOGLIA:
-            df_giorno = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
+            df_giorno_monitor = df_q[df_q['Giorno'].str.contains(data_target, na=False, case=False)]
+            df_giorno_diff = df_diff[df_diff['Giorno'].str.contains(data_target, na=False, case=False)]
             
-            if not df_giorno.empty and df_giorno['Quantita'].sum() > 0:
+            if not df_giorno_monitor.empty:
                 st.markdown(f"""<div style="background-color: #31333F; padding: 10px; border-radius: 5px; margin: 30px 0 15px 0;">
-                                <h3 style="margin:0; color:#FFFFFF; text-align:center;">📊 Analisi Produzione: {data_target}</h3>
+                                <h3 style="margin:0; color:#FFFFFF; text-align:center;">📊 {data_target}</h3>
                              </div>""", unsafe_allow_html=True)
                 
                 c_graf1, c_graf2 = st.columns(2)
                 
                 with c_graf1:
-                    df_plot_tot = df_giorno.groupby('Prodotto')['Quantita'].sum().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
-                    fig_tot = px.bar(
-                        df_plot_tot, 
-                        x='Prodotto', 
-                        y='Quantita', 
-                        color='Prodotto', 
-                        text_auto=True, 
-                        title="📦 Kg Totali Grigliati", 
-                        color_discrete_map=COLOR_MAP
-                    )
-                    fig_tot.update_layout(showlegend=False, height=350)
-                    st.plotly_chart(fig_tot, use_container_width=True, key=f"carne_tot_{data_target.replace(' ', '_')}")
+                    df_res_giorno = df_giorno_monitor.groupby('Prodotto')['Quantita'].max().reindex(PRODOTTI_ORDINE).fillna(0).reset_index()
+                    fig_tot = px.bar(df_res_giorno, x='Prodotto', y='Quantita', color='Prodotto', text_auto=True, 
+                                     title="📦 Totale Pezzi di oggi", color_discrete_map=COLOR_MAP)
+                    fig_tot.update_layout(showlegend=False, height=350, yaxis_title="Pezzi")
+                    st.plotly_chart(fig_tot, use_container_width=True, key=f"bar_{data_target}")
                 
                 with c_graf2:
-                    df_time = df_giorno.sort_values(by='Ora')
-                    fig_line = px.line(
-                        df_time, 
-                        x='Ora', 
-                        y='Quantita', 
-                        color='Prodotto', 
-                        markers=True, 
-                        title="📈 Picchi di Lavoro (Produzione nel tempo)",
-                        color_discrete_map=COLOR_MAP
-                    )
-                    fig_line.update_layout(
-                        xaxis_title="Fascia Oraria", 
-                        yaxis_title="Quantità (Kg)", 
-                        height=350,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                    )
-                    st.plotly_chart(fig_line, use_container_width=True, key=f"carne_time_{data_target.replace(' ', '_')}")
+                    fig_line = px.line(df_giorno_diff.sort_values('Ora'), x='Ora', y='Produzione_Effettiva', color='Prodotto', markers=True, 
+                                      title="📈 Pezzi aggiunti tra gli inserimenti", color_discrete_map=COLOR_MAP)
+                    fig_line.update_layout(xaxis_title="Ora", yaxis_title="Variazione Pezzi", height=350)
+                    st.plotly_chart(fig_line, use_container_width=True, key=f"line_{data_target}")
 
 # --- TAB 3: GESTIONE TEAM ---
 with tab3:
@@ -331,9 +290,8 @@ with tab3:
             nuovo = st.text_input("Inserisci il nuovo nome corretto")
             if st.button("Aggiorna Nome Ovunque"):
                 if vecchio and nuovo:
-                    with st.spinner("Aggiornamento..."):
-                        if rename_grigliatore(vecchio, nuovo):
-                            st.success("Aggiornato!"); time.sleep(1.5); st.rerun()
+                    if rename_grigliatore(vecchio, nuovo):
+                        st.success("Aggiornato!"); time.sleep(1.5); st.rerun()
     with st.expander("🗑️ Rimuovi definitivamente"):
         if not df_nomi.empty:
             for idx, row in df_nomi.iterrows():
