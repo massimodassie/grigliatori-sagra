@@ -86,7 +86,6 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # Calcolo Percentuale e Colore
             percentuale = min(100, (count / target) * 100)
             if count < target:
                 col_c = "#e76f51" # Arancio
@@ -100,7 +99,7 @@ with tab_presenze:
             
             c1, c2 = st.columns([1, 4])
             with c1:
-                # NUOVO GRAFICO RADIALE (Molto più stabile della Torta)
+                # Grafico Radiale Corretto e Semplificato
                 fig = go.Figure(go.Barpolar(
                     r=[percentuale],
                     theta=[0],
@@ -111,13 +110,13 @@ with tab_presenze:
                 fig.update_layout(
                     polar=dict(
                         hole=0.7,
-                        radialaxis=dict(showtile=False, showgrid=False, showline=False, tickvals=[], range=[0, 100]),
-                        angularaxis=dict(showgrid=False, showline=False, tickvals=[])
+                        radialaxis=dict(visible=False, range=[0, 100]),
+                        angularaxis=dict(visible=False)
                     ),
-                    height=100, margin=dict(t=10, b=10, l=10, r=10),
-                    annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=14, showarrow=False, font_color=col_c)]
+                    height=100, margin=dict(t=5, b=5, l=5, r=5),
+                    annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=16, showarrow=False, font_color=col_c)]
                 )
-                st.plotly_chart(fig, use_container_width=True, key=f"rad_{dt}")
+                st.plotly_chart(fig, use_container_width=True, key=f"rad_{dt}", config={'displayModeBar': False})
             with c2:
                 st.markdown(f"### {dt}")
                 st.markdown(f"**{stato_txt}**")
