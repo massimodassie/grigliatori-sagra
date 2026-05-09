@@ -10,10 +10,15 @@ import base64
 from datetime import datetime
 
 # ==========================================
-# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 03.9
+# 🚀 PORTALE GRIGLIATORI 2026 - RELEASE 03.9.1
 # ==========================================
 
 st.set_page_config(page_title="Portale Grigliatori 2026", layout="wide")
+
+# --- VERSIONING ---
+VERSION = "03.9.1"
+LAST_UPDATE = "2026-05-09"
+STATUS = "Stabile - Foto Fixate"
 
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm4aBkBr8MU259VV0HJvAUy_Y-dxnhqDhbUyaePEOzy/exec"
@@ -38,6 +43,9 @@ def get_image_url(url):
 DATE_UFFICIALI = ["Sabato 09 maggio - Cena", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena", "Venerdì 15 maggio - Cena della costata", "Sabato 16 maggio - Cena", "Domenica 17 maggio - Pranzo", "Domenica 17 maggio - Cena", "Sabato 23 maggio - Cena", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"]
 PRODOTTI = ["Costicine", "Salsicce", "Braciole"]
 
+# Sidebar o Header per Info Software
+st.sidebar.info(f"**Versione:** {VERSION}\n\n**Data:** {LAST_UPDATE}\n\n**Status:** {STATUS}")
+
 st.title("🔥 Portale Grigliatori 2026")
 
 # Caricamento Dati
@@ -46,7 +54,7 @@ df_n = load_data("ListaGrigliatori")
 df_g = load_data("Galleria")
 df_c = load_data("Quantità Grigliate")
 
-tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Nomi"])
+tabs = st.tabs(["👥 Presenze", "🍖 Monitor Carne", "📸 Galleria", "⚙️ Sistema"])
 
 # --- TAB 1: PRESENZE ---
 with tabs[0]:
@@ -57,6 +65,7 @@ with tabs[0]:
             user = st.selectbox("Chi sei?", [""] + nomi)
             if user:
                 p_u = df_p[df_p.iloc[:,0] == user].iloc[:,1].tolist() if not df_p.empty else []
+                st.write("---")
                 for d in DATE_UFFICIALI:
                     if st.checkbox(d, value=(d in p_u), key=f"chk_{d}"):
                         if d not in p_u:
@@ -82,7 +91,6 @@ with tabs[0]:
                 fig.update_layout(height=160, margin=dict(l=10, r=10, t=40, b=0))
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # INFO NOMI - Se non appaiono qui, il problema è il filtro dei dati
                 if presenti:
                     st.success(f"Presenti: {', '.join(presenti)}")
                 else:
@@ -124,10 +132,19 @@ with tabs[2]:
                 st.image(get_image_url(row.iloc[1]), use_container_width=True)
                 st.caption(f"{row.iloc[0]} - {row.iloc[2]}")
 
-# --- TAB 4: NOMI ---
+# --- TAB 4: SISTEMA ---
 with tabs[3]:
-    st.subheader("⚙️ Lista Grigliatori")
-    new_n = st.text_input("Nuovo Nome")
+    st.subheader("⚙️ Gestione e Info")
+    st.info(f"""
+    **Release Software:** {VERSION}
+    **Ultimo Aggiornamento:** {LAST_UPDATE}
+    **Database:** Google Sheets
+    **Stato Immagini:** Drive Thumbnail API (Attivo)
+    """)
+    
+    st.write("---")
+    st.write("### Aggiungi Nuovo Grigliatore")
+    new_n = st.text_input("Nome e Cognome")
     if st.button("Aggiungi"):
         if new_n:
             requests.post(SCRIPT_URL, data=json.dumps({"sheet": "ListaGrigliatori", "data": [new_n]}))
