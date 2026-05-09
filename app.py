@@ -86,41 +86,40 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # DETERMINAZIONE COLORE E VALORI PER GRAFICO MANUALE
+            # --- LOGICA COLORI E VALORI ANTI-GRIGIO ---
             if count < target:
                 col_c = "#e76f51" # Arancio
-                valori = [count, target - count]
-                colori_spicchi = [col_c, "#eeeeee"]
+                valori_donut = [count, target - count]
+                colori_donut = [col_c, "#eeeeee"]
                 stato_txt = f"⚠️ TARGET KO: -{target - count}"
             elif count == target:
                 col_c = "#2a9d8f" # Verde
-                valori = [1] # Cerchio pieno
-                colori_spicchi = [col_c]
+                valori_donut = [100] # Singolo valore = anello pieno
+                colori_donut = [col_c]
                 stato_txt = "✅ TARGET OK"
             else:
                 col_c = "#1d3557" # Blu Scuro
-                valori = [1] # Cerchio pieno
-                colori_spicchi = [col_c]
+                valori_donut = [100] # Singolo valore = anello pieno
+                colori_donut = [col_c]
                 stato_txt = f"✅ TARGET OK (+{count - target})"
             
             c1, c2 = st.columns([1, 4])
             with c1:
-                # Grafico a torta forzato per evitare il grigio dell'overflow
                 fig = go.Figure(data=[go.Pie(
-                    values=valori,
-                    hole=0.7,
-                    marker=dict(colors=colori_spicchi, line=dict(color='white', width=0)),
+                    values=valori_donut,
+                    hole=0.75,
+                    marker=dict(colors=colori_donut, line=dict(color='white', width=0)),
                     showlegend=False,
                     textinfo='none',
                     hoverinfo='none',
-                    sort=False # Fondamentale per mantenere l'ordine dei colori
+                    sort=False
                 )])
                 fig.update_layout(
-                    height=120,
+                    height=130,
                     margin=dict(t=0, b=0, l=0, r=0),
-                    annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False, font_color=col_c)]
+                    annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=22, showarrow=False, font_color=col_c)]
                 )
-                st.plotly_chart(fig, use_container_width=True, key=f"pie_final_{dt}", config={'displayModeBar': False})
+                st.plotly_chart(fig, use_container_width=True, key=f"donut_{dt}", config={'displayModeBar': False})
             with c2:
                 st.markdown(f"### {dt}")
                 st.markdown(f"**{stato_txt}**")
