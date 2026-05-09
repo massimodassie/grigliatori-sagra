@@ -86,32 +86,41 @@ with tab_presenze:
             count = len(presenti)
             target = 5 if "Pranzo" in dt else 7
             
-            # LOGICA COLORI DEFINITIVA
+            # DETERMINAZIONE COLORE E VALORI PER GRAFICO MANUALE
             if count < target:
                 col_c = "#e76f51" # Arancio
+                valori = [count, target - count]
+                colori_spicchi = [col_c, "#eeeeee"]
                 stato_txt = f"⚠️ TARGET KO: -{target - count}"
             elif count == target:
                 col_c = "#2a9d8f" # Verde
+                valori = [1] # Cerchio pieno
+                colori_spicchi = [col_c]
                 stato_txt = "✅ TARGET OK"
             else:
                 col_c = "#1d3557" # Blu Scuro
+                valori = [1] # Cerchio pieno
+                colori_spicchi = [col_c]
                 stato_txt = f"✅ TARGET OK (+{count - target})"
             
             c1, c2 = st.columns([1, 4])
             with c1:
-                # USO DI GAUGE: Molto più affidabile per i colori
-                fig = go.Figure(go.Indicator(
-                    mode = "gauge+number",
-                    value = count,
-                    number = {'font': {'size': 20, 'color': col_c}},
-                    gauge = {
-                        'axis': {'range': [0, max(count, target)], 'visible': False},
-                        'bar': {'color': col_c},
-                        'bgcolor': "#eeeeee",
-                    }
-                ))
-                fig.update_layout(height=100, margin=dict(t=10, b=10, l=10, r=10))
-                st.plotly_chart(fig, use_container_width=True, key=f"gauge_{dt}", config={'displayModeBar': False})
+                # Grafico a torta forzato per evitare il grigio dell'overflow
+                fig = go.Figure(data=[go.Pie(
+                    values=valori,
+                    hole=0.7,
+                    marker=dict(colors=colori_spicchi, line=dict(color='white', width=0)),
+                    showlegend=False,
+                    textinfo='none',
+                    hoverinfo='none',
+                    sort=False # Fondamentale per mantenere l'ordine dei colori
+                )])
+                fig.update_layout(
+                    height=120,
+                    margin=dict(t=0, b=0, l=0, r=0),
+                    annotations=[dict(text=str(count), x=0.5, y=0.5, font_size=20, showarrow=False, font_color=col_c)]
+                )
+                st.plotly_chart(fig, use_container_width=True, key=f"pie_final_{dt}", config={'displayModeBar': False})
             with c2:
                 st.markdown(f"### {dt}")
                 st.markdown(f"**{stato_txt}**")
