@@ -8,7 +8,7 @@ import io
 import urllib.parse
 
 # --- CONFIGURAZIONE ---
-st.set_page_config(page_title="Grigliatori", layout="wide")
+st.set_page_config(page_title="Grigliatori - Presenze", layout="wide")
 
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycby7yJ-jjJYworKTL9w20Er0w_Av3U1xqUvLQi0oGlrYy70Sg1xK6BJysNGZIZlJ0DtM/exec"
 SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
@@ -16,18 +16,24 @@ SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 URL_PRESENZE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Presenze"
 URL_NOMI = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=ListaGrigliatori"
 
-# LISTA UFFICIALE (Deve corrispondere a quella dell'Excel)
+# LISTA AGGIORNATA CON I TUOI TURNI ESATTI
 DATE_UFFICIALI = [
-    "Sabato 09 maggio", "Domenica 10 maggio - Pranzo", "Domenica 10 maggio - Cena",
-    "Venerdì 15 maggio", "Sabato 16 maggio", "Domenica 17 maggio - Pranzo", "Domenica 17 maggio - Cena",
-    "Sabato 23 maggio", "Domenica 24 maggio - Pranzo", "Domenica 24 maggio - Cena"
+    "Sabato 09 maggio - Cena", 
+    "Domenica 10 maggio - Pranzo", 
+    "Domenica 10 maggio - Cena",
+    "Venerdì 15 maggio - Cena della costata", 
+    "Sabato 16 maggio - Cena", 
+    "Domenica 17 maggio - Pranzo", 
+    "Domenica 17 maggio - Cena",
+    "Sabato 23 maggio - Cena", 
+    "Domenica 24 maggio - Pranzo", 
+    "Domenica 24 maggio - Cena"
 ]
 
 def load_data(url):
     try:
         r = requests.get(f"{url}&nocache={time.time()}", timeout=10)
         df = pd.read_csv(io.StringIO(r.text), dtype=str, na_filter=False)
-        # Pulizia: tutto in stringa, togli spazi bianchi all'inizio e alla fine
         df = df.apply(lambda x: x.str.strip())
         return df
     except: return pd.DataFrame()
@@ -43,62 +49,67 @@ def delete_presence(sheet, row_idx):
 st.title("👥 Gestione Presenze")
 
 df_n = load_data(URL_NOMI)
-lista_nomi = sorted([n for n in df_n.iloc[:,0].unique() if n]) if not df_n.empty else []
-user = st.selectbox("Chi sei?", [""] + lista_nomi)
+lista_nomi = sorted([n for n in df_n.iloc[:,0].unique() if n and n != "nan"]) if not df_n.empty else []
+user = st.selectbox("Seleziona il tuo nome", [""] + lista_nomi)
 
 df_p = load_data(URL_PRESENZE)
 
 if user:
-    st.subheader(f"I tuoi turni ({user})")
-    # Filtriamo i turni dell'utente ignorando maiuscole/minuscole e spazi
-    miei_turni = []
+    st.subheader(f"Turni di: {user}")
+    
+    # Pulizia nomi colonne se presenti
     if not df_p.empty:
-        # Colonna 0 = Nome, Colonna 1 = Turno
-        miei_turni = df_p[df_p.iloc[:,0].str.lower() == user.lower()].iloc[:,1].tolist()
+        df_p.columns = ["Nome", "Turno"][:len(df_p.columns)]
+        miei_turni = df_p[df_p["Nome"].str.lower() == user.lower()]["Turno"].tolist()
+    else:
+        miei_turni = []
 
-    cols = st.columns(3)
+    cols = st.columns(2) # Due colonne per leggere meglio i nomi lunghi
     for i, data_t in enumerate(DATE_UFFICIALI):
-        with cols[i%3]:
-            # Controllo "blindato": verifica se il turno dell'utente è nella lista ufficiale
-            is_checked = any(data_t.lower() == mt.lower() for mt in miei_turni)
+        with cols[i%2]:
+            # Controllo presenza (case-insensitive)
+            is_checked = any(data_t.lower() == str(mt).lower() for mt in miei_turni)
             
             if st.toggle(data_t, value=is_checked, key=f"t_{i}") != is_checked:
                 if not is_checked:
                     save_presence(user, data_t)
                 else:
-                    # Troviamo l'indice esatto per cancellare
-                    match = df_p[(df_p.iloc[:,0].str.lower() == user.lower()) & (df_p.iloc[:,1].str.lower() == data_t.lower())]
+                    # Trova l'indice per cancellare
+                    match = df_p[(df_p["Nome"].str.lower() == user.lower()) & (df_p["Turno"].str.lower() == data_t.lower())]
                     if not match.empty:
                         delete_presence("Presenze", match.index[0])
                 st.rerun()
 
 st.divider()
-st.subheader("📊 Copertura Team")
+st.subheader("📊 Stato Copertura Team")
 
 if not df_p.empty:
     for data_t in DATE_UFFICIALI:
-        # Contiamo i presenti per questo turno in modo "insensibile" a errori di battitura
-        presenti = df_p[df_p.iloc[:,1].str.lower() == data_t.lower()].iloc[:,0].unique().tolist()
-        count = len([p for p in presenti if p])
+        # Filtro presenti per il turno specifico
+        presenti_turno = df_p[df_p["Turno"].str.lower() == data_t.lower()]["Nome"].unique().tolist()
+        presenti_turno = [p for p in presenti_turno if p and p != "nan"]
+        
+        count = len(presenti_turno)
         target = 5 if "Pranzo" in data_t else 6
         
-        c1, c2 = st.columns([1, 4])
-        with c1:
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            # Grafico a torta mini
             fig = go.Figure(go.Pie(values=[count, max(0, target-count)], hole=0.7, 
                                   marker_colors=["#2a9d8f", "#eeeeee"], showlegend=False, textinfo='none'))
-            fig.update_layout(height=80, margin=dict(t=0, b=0, l=0, r=0), 
-                             annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=14, showarrow=False)])
+            fig.update_layout(height=70, margin=dict(t=0, b=0, l=0, r=0), 
+                             annotations=[dict(text=f"{count}/{target}", x=0.5, y=0.5, font_size=12, showarrow=False)])
             st.plotly_chart(fig, use_container_width=True, key=f"pie_{data_t}")
-        with c2:
+        with col2:
             st.markdown(f"**{data_t}**")
-            st.caption(", ".join(presenti) if presenti else "Nessun grigliatore")
+            st.caption(", ".join(presenti_turno) if presenti_turno else "Nessuno")
 
-    # DEBUG: Mostra se ci sono dati "orfani" nel foglio Excel
-    with st.expander("⚠️ Verifica errori nel foglio Excel"):
-        st.write("Se vedi date qui sotto, significa che nell'Excel sono scritte male e devi correggerle:")
-        date_nel_foglio = df_p.iloc[:,1].unique()
+    # SEZIONE DEBUG PER SISTEMARE L'EXCEL
+    with st.expander("🛠️ Analisi dati Excel (Controlla se ci sono errori)"):
+        date_nel_foglio = df_p["Turno"].unique().tolist()
         errori = [d for d in date_nel_foglio if d not in DATE_UFFICIALI and d != ""]
         if errori:
-            st.error(f"Date errate trovate nell'Excel: {errori}")
+            st.warning(f"Nell'Excel ci sono turni con nomi non riconosciuti: {errori}")
+            st.info("Suggerimento: Correggi questi nomi nel foglio 'Presenze' usando quelli esatti (es. aggiungi '- Cena' dove manca)")
         else:
-            st.success("Tutte le date nel foglio Excel sono scritte correttamente!")
+            st.success("Tutte le date nel foglio Excel sono sincronizzate correttamente!")
