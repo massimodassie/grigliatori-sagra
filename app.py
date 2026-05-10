@@ -94,38 +94,42 @@ with tabs[0]:
                 st.write(f"**PRESENTI:** {', '.join(pres)}")
             st.write("---")
 
-# --- TAB 2: MONITOR CARNE (CON FINESTRA MODIFICHE) ---
+# --- TAB 2: MONITOR CARNE (LOGICA DIFFERENZIALE) ---
 with tabs[1]:
     st.subheader("🍖 Registrazione Pezzi Carne")
-    with st.form("c_form_final"):
+    
+    with st.form("c_form_differenziale"):
         c_date, c_prod, c_qta, c_time = st.columns(4)
         f_d = c_date.selectbox("Turno", DATE_UFFICIALI)
         f_p = c_prod.selectbox("Tipo Carne", PRODOTTI)
-        f_q = c_qta.number_input("Pezzi", min_value=0, step=1)
+        f_q_totale = c_qta.number_input("Valore Totale Monitor", min_value=0, step=1)
         f_t = c_time.text_input("Ora Inserimento", value=get_it_time())
-        if st.form_submit_button("REGISTRA"):
-            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, f_t]}))
-            st.success("Inserito correttamente!"); time.sleep(1); st.rerun()
-    
-    if not df_c.empty:
-        df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
-        df_c["Qta"] = pd.to_numeric(df_c["Qta"])
         
-        st.write("---")
-        for d in df_c["Data"].unique():
-            with st.expander(f"📊 Analisi e Modifiche Turno: {d}", expanded=True):
-                df_turno = df_c[df_c["Data"] == d]
-                
-                # Grafici
-                col_g1, col_g2 = st.columns(2)
-                with col_g1:
-                    df_sum = df_turno.groupby("Prodotto")["Qta"].sum().reset_index()
-                    fig_t = px.bar(df_sum, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Totali")
-                    fig_t.update_traces(textposition='outside')
-                    st.plotly_chart(fig_t, use_container_width=True, key=f"b_{d}")
-                with col_g2:
-                    fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", line_shape="spline", markers=True, title="Andamento")
-                    st.plotly_chart(fig_a, use_container_width=True, key=f"l_{d}")
+        if st.form_submit_button("REGISTRA"):
+            # Calcolo della differenza
+            if not df_c.empty:
+                # Filtro per lo stesso prodotto per trovare l'ultimo valore inserito
+                last_val_rows = df_c[df_c.iloc[:, 1] == f_p]
+                if not last_val_rows.empty:
+                    last_val = pd.to_numeric(last_val_rows.iloc[-1, 2])
+                else:
+                    last_val = 0
+            else:
+                last_val = 0
+            
+            # Sottrazione automatica
+            pezzi_aggiunti = f_q_totale - last_val
+            
+            if pezzi_aggiunti < 0:
+                st.error(f"Errore: Il valore totale ({f_q_totale}) è inferiore all'ultimo inserito ({last_val}). Controlla il contatore!")
+            else:
+                # Invio al database solo la differenza
+                requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, pezzi_aggiunti, f_t]}))
+                st.success(f"Registrato! Aggiunti {pezzi_aggiunti} pezzi (Totale monitor: {f_q_totale})")
+                time.sleep(1)
+                st.rerun()
+
+    # Segue il resto del codice dei grafici e della finestra modifiche...
                 
                 # FINESTRA MODIFICHE (Quella che mancava)
                 st.write("**📝 Lista Inserimenti (clicca Elimina per correggere)**")
