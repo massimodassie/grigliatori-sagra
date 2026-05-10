@@ -155,7 +155,8 @@ with tabs[1]:
                     if cm4.button("🗑️", key=f"del_meat_{idx}"):
                         requests.get(f"{SCRIPT_URL}?sheet=Quantità Grigliate&deleteRow={idx+2}")
                         st.warning("Eliminato!"); time.sleep(1); st.rerun()
-st.write("---")
+
+        st.write("---")
         st.subheader("📈 Totali Sagra (Tutto il periodo)")
         c_fin1, c_fin2 = st.columns(2)
         with c_fin1:
