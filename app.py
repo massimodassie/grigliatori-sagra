@@ -19,8 +19,9 @@ SHEET_ID = "1mNyNxsXuGODr9AVicYlH-cmGVjrrnlD3pJk2rajs-U8"
 SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzMy80_9pusPTyIWhyCb7Vp-nm4aBkBr8MU259VV0HJvAUy_Y-dxnhqDhbUyaePEOzy/exec"
 TARGET_PERSONE = 7 
 
-def get_it_time():
-    return (datetime.now() + timedelta(hours=2)).strftime("%H:%M")
+# Forza il ricalcolo dell'ora ogni volta che il form viene renderizzato
+        ora_attuale = get_it_time()
+        f_t = c_time.text_input("Ora Inserimento", value=ora_attuale)
 
 def load_data(sheet_name):
     try:
