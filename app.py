@@ -105,6 +105,7 @@ with tabs[1]:
     with st.form("c_form_multiplo"):
         c_date, c_time = st.columns(2)
         f_d = c_date.selectbox("Turno", DATE_UFFICIALI)
+        ora_attuale = get_it_time()
         f_t = c_time.text_input("Ora Inserimento", value=get_it_time())
         
         st.write("---")
