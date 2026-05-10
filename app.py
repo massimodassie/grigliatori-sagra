@@ -135,27 +135,26 @@ with tabs[1]:
             dati_da_inviare = []
 
             for prodotto, valore_totale in inputs:
-                # MODIFICA QUI: Controlliamo il valore solo se è MAGGIORE DI ZERO
-                if valore_totale > 0: 
-                    last_val = 0
+                # Procediamo solo se l'utente ha effettivamente scritto qualcosa nel campo
+                if valore_totale > 0:
+                    somma_precedente = 0
                     if not df_c.empty:
-                        # Prendiamo l'ultima riga di quel prodotto specifico
-                        last_val_rows = df_c[df_c["Prodotto"] == prodotto]
-                        if not last_val_rows.empty:
-                            last_val = last_val_rows.iloc[-1]["Qta"]
+                        # CALCOLO IL TOTALE STORICO: Sommo tutti i pezzi fatti finora per quel prodotto
+                        df_prod = df_c[df_c["Prodotto"] == prodotto]
+                        somma_precedente = df_prod["Qta"].sum()
                     
-                    diff = valore_totale - last_val
+                    # La differenza è: Quello che vedo sul monitor - Tutto quello fatto finora
+                    diff = valore_totale - somma_precedente
                     
                     if diff < 0:
-                        errori.append(f"{prodotto} (Monitor {valore_totale} < Ultimo {int(last_val)})")
-                    else:
+                        errori.append(f"{prodotto} (Monitor {valore_totale} < Totale Sagra {int(somma_precedente)})")
+                    elif diff > 0: # Salviamo solo se c'è un incremento reale
                         dati_da_inviare.append({"sheet": "Quantità Grigliate", "data": [f_d, prodotto, int(diff), f_t]})
                 else:
-                    # Se il valore è 0, non facciamo nulla e non segnaliamo errore
                     continue
 
             if errori:
-                st.error(f"⚠️ Attenzione: {', '.join(errori)}. Gli altri dati corretti non sono stati inviati per sicurezza.")
+                st.error(f"⚠️ {', '.join(errori)}. Controlla i numeri, forse il monitor segna meno del totale già grigliato ieri!")
             elif dati_da_inviare:
                 with st.spinner("Salvataggio in corso..."):
                     for payload in dati_da_inviare:
@@ -163,6 +162,8 @@ with tabs[1]:
                 st.success(f"✅ Registrati con successo: {len(dati_da_inviare)} prodotti!")
                 time.sleep(1)
                 st.rerun()
+            else:
+                st.warning("Nessun dato nuovo inserito (i valori sono uguali a quelli già salvati).")
 
     if not df_c.empty:
         st.write("---")
