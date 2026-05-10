@@ -247,11 +247,30 @@ with tabs[3]:
                 requests.get(f"{SCRIPT_URL}?sheet=ListaGrigliatori&deleteRow={idx[0]+2}")
                 st.rerun()
 
+# --- TAB 5: INFO RELEASE (STORICO AGGIORNATO) ---
 with tabs[4]:
-    st.subheader("📜 Release Note")
-    st.info("Release: **04.9**")
+    st.subheader("📜 Registro Modifiche (Release Log)")
+    
+    # Nuova Versione in evidenza
+    st.info("🚀 **Release Attuale: 04.10 (Versione 5.0)**")
     st.markdown("""
-    - **v04.9**: Ripristinata la **Lista Inserimenti** con tasto elimina per correggere errori orari/quantità.
-    - **v04.8**: Grafico Sagra ripristinato a Spline.
-    - **v04.7**: Fix orario italiano (+2h).
+    **Novità di oggi (10 Maggio 2026):**
+    - ⚡ **Inserimento Multiplo**: Aggiunto form unico per inserire Costicine, Salsicce e Braciole contemporaneamente (risparmio tempo durante il servizio).
+    - 🔢 **Sottrazione Automatica**: Ora l'app calcola da sola la differenza! Inserisci il valore totale che leggi sul monitor e l'app salva solo i pezzi aggiunti.
+    - 🕒 **Fix Orario Dinamico**: L'ora di inserimento si aggiorna automaticamente ogni volta che apri il form o salvi un dato.
+    - 📈 **Grafici Spline Ordinati**: Risolto il problema del "gomitolo" nei grafici. Ora i dati sono ordinati cronologicamente e la linea segue l'andamento reale del tempo.
+    - 🛡️ **Fix KeyError**: Blindato il sistema di lettura dati per evitare crash se i nomi delle colonne nel foglio Google cambiano.
     """)
+
+    st.write("---")
+    
+    # Storico versioni precedenti
+    with st.expander("📚 Storico Versioni Precedenti"):
+        st.markdown("""
+        - **v04.9**: Ripristinata la Lista Inserimenti con tasto elimina per correggere errori.
+        - **v04.8**: Grafico Sagra ripristinato a Spline (Area curve).
+        - **v04.7**: Fix orario italiano (+2h) nel form carne.
+        - **v04.6**: Aggiunte etichette quantità fisse sui grafici a barre.
+        - **v04.5**: Implementazione sistema di caricamento foto in Galleria.
+        - **v04.0**: Prima release ufficiale Monitor Carne e Presenze.
+        """)
