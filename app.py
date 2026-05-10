@@ -94,37 +94,67 @@ with tabs[0]:
                 st.write(f"**PRESENTI:** {', '.join(pres)}")
             st.write("---")
 
-# --- TAB 2: MONITOR CARNE (VERSIONE BLINDATA E CORRETTA) ---
+# --- TAB 2: MONITOR CARNE (INSERIMENTO MULTIPLO VELOCE) ---
 with tabs[1]:
-    st.subheader("🍖 Registrazione Pezzi Carne")
+    st.subheader("🍖 Inserimento Rapido Pezzi Carne")
     
-    # Forza i nomi delle colonne per evitare KeyError
     if not df_c.empty:
         df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
         df_c["Qta"] = pd.to_numeric(df_c["Qta"], errors='coerce').fillna(0)
     
-    with st.form("c_form_differenziale"):
-        c_date, c_prod, c_qta, c_time = st.columns(4)
+    with st.form("c_form_multiplo"):
+        c_date, c_time = st.columns(2)
         f_d = c_date.selectbox("Turno", DATE_UFFICIALI)
-        f_p = c_prod.selectbox("Tipo Carne", PRODOTTI)
-        f_q_totale = c_qta.number_input("Valore Totale Monitor", min_value=0, step=1)
         f_t = c_time.text_input("Ora Inserimento", value=get_it_time())
         
-        if st.form_submit_button("REGISTRA"):
-            last_val = 0
-            if not df_c.empty:
-                # Trova l'ultimo valore per quel prodotto
-                last_val_rows = df_c[df_c["Prodotto"] == f_p]
-                if not last_val_rows.empty:
-                    last_val = last_val_rows.iloc[-1]["Qta"]
+        st.write("---")
+        # Tre colonne per le tre pietanze
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("### Costicine")
+            f_q_costicine = st.number_input("Totale Monitor", min_value=0, step=1, key="q_cost")
+        with col2:
+            st.markdown("### Salsicce")
+            f_q_salsicce = st.number_input("Totale Monitor", min_value=0, step=1, key="q_sals")
+        with col3:
+            st.markdown("### Braciole")
+            f_q_braciole = st.number_input("Totale Monitor", min_value=0, step=1, key="q_brac")
             
-            pezzi_aggiunti = f_q_totale - last_val
+        st.write("---")
+        submit = st.form_submit_button("🚀 SALVA TUTTO")
+        
+        if submit:
+            inputs = [
+                ("Costicine", f_q_costicine),
+                ("Salsicce", f_q_salsicce),
+                ("Braciole", f_q_braciole)
+            ]
             
-            if pezzi_aggiunti < 0:
-                st.error(f"Errore: il monitor ({f_q_totale}) è più basso dell'ultimo dato ({int(last_val)}).")
-            else:
-                requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, int(pezzi_aggiunti), f_t]}))
-                st.success(f"✅ Registrato! Aggiunti {int(pezzi_aggiunti)} pezzi.")
+            errori = []
+            dati_da_inviare = []
+
+            for prodotto, valore_totale in inputs:
+                if valore_totale > 0: # Registriamo solo se il valore è inserito
+                    last_val = 0
+                    if not df_c.empty:
+                        last_val_rows = df_c[df_c["Prodotto"] == prodotto]
+                        if not last_val_rows.empty:
+                            last_val = last_val_rows.iloc[-1]["Qta"]
+                    
+                    diff = valore_totale - last_val
+                    
+                    if diff < 0:
+                        errori.append(f"{prodotto} (Monitor {valore_totale} < Ultimo {int(last_val)})")
+                    else:
+                        dati_da_inviare.append({"sheet": "Quantità Grigliate", "data": [f_d, prodotto, int(diff), f_t]})
+
+            if errori:
+                st.error(f"⚠️ Errori nei valori di: {', '.join(errori)}")
+            elif dati_da_inviare:
+                with st.spinner("Salvataggio in corso..."):
+                    for payload in dati_da_inviare:
+                        requests.post(SCRIPT_URL, data=json.dumps(payload))
+                st.success(f"✅ Registrati con successo: {len(dati_da_inviare)} prodotti!")
                 time.sleep(1)
                 st.rerun()
 
