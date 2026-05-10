@@ -156,6 +156,19 @@ with tabs[1]:
                         requests.get(f"{SCRIPT_URL}?sheet=Quantità Grigliate&deleteRow={idx+2}")
                         st.warning("Eliminato!"); time.sleep(1); st.rerun()
 
+st.write("---")
+        st.subheader("📈 Totali Sagra (Tutto il periodo)")
+        c_fin1, c_fin2 = st.columns(2)
+        with c_fin1:
+            df_g_sum = df_c.groupby("Prodotto")["Qta"].sum().reset_index()
+            fig_g_b = px.bar(df_g_sum, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Pezzi Totali Sagra")
+            fig_g_b.update_traces(textposition='outside')
+            st.plotly_chart(fig_g_b, use_container_width=True)
+        with c_fin2:
+            df_day = df_c.groupby(["Data", "Prodotto"])["Qta"].sum().reset_index()
+            fig_day = px.area(df_day, x="Data", y="Qta", color="Prodotto", line_shape="spline", title="Andamento Globale Sagra")
+            st.plotly_chart(fig_day, use_container_width=True)
+
 # --- TAB GALLERIA, SISTEMA, INFO (INVARIATI) ---
 with tabs[2]:
     st.subheader("📸 Galleria")
