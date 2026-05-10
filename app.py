@@ -142,7 +142,23 @@ with tabs[1]:
                     fig_t.update_traces(textposition='outside')
                     st.plotly_chart(fig_t, use_container_width=True, key=f"bar_v_{d}")
                 with col_g2:
-                    fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", line_shape="spline", markers=True, title="Andamento")
+                    # Ordiniamo i dati per 'Ora' così la linea non torna mai indietro
+                    df_linea = df_turno.copy()
+                    df_linea = df_linea.sort_values(by="Ora")
+                    
+                    fig_a = px.line(
+                        df_linea, 
+                        x="Ora", 
+                        y="Qta", 
+                        color="Prodotto", 
+                        line_shape="spline", 
+                        markers=True, 
+                        title="Andamento Temporale"
+                    )
+                    
+                    # Questo comando assicura che l'asse delle X sia trattato come tempo lineare
+                    fig_a.update_xaxes(categoryorder="category ascending")
+                    
                     st.plotly_chart(fig_a, use_container_width=True, key=f"line_v_{d}")
                 
                 # FINESTRA MODIFICHE (Indentazione Corretta)
