@@ -135,9 +135,11 @@ with tabs[1]:
             dati_da_inviare = []
 
             for prodotto, valore_totale in inputs:
-                if valore_totale > 0: # Registriamo solo se il valore è inserito
+                # MODIFICA QUI: Controlliamo il valore solo se è MAGGIORE DI ZERO
+                if valore_totale > 0: 
                     last_val = 0
                     if not df_c.empty:
+                        # Prendiamo l'ultima riga di quel prodotto specifico
                         last_val_rows = df_c[df_c["Prodotto"] == prodotto]
                         if not last_val_rows.empty:
                             last_val = last_val_rows.iloc[-1]["Qta"]
@@ -148,9 +150,12 @@ with tabs[1]:
                         errori.append(f"{prodotto} (Monitor {valore_totale} < Ultimo {int(last_val)})")
                     else:
                         dati_da_inviare.append({"sheet": "Quantità Grigliate", "data": [f_d, prodotto, int(diff), f_t]})
+                else:
+                    # Se il valore è 0, non facciamo nulla e non segnaliamo errore
+                    continue
 
             if errori:
-                st.error(f"⚠️ Errori nei valori di: {', '.join(errori)}")
+                st.error(f"⚠️ Attenzione: {', '.join(errori)}. Gli altri dati corretti non sono stati inviati per sicurezza.")
             elif dati_da_inviare:
                 with st.spinner("Salvataggio in corso..."):
                     for payload in dati_da_inviare:
