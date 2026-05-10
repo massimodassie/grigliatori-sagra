@@ -94,23 +94,41 @@ with tabs[0]:
                 st.write(f"**PRESENTI:** {', '.join(pres)}")
             st.write("---")
 
-# --- TAB 2: MONITOR CARNE (CON FINESTRA MODIFICHE) ---
+# --- TAB 2: MONITOR CARNE (VERSIONE BLINDATA E CORRETTA) ---
 with tabs[1]:
     st.subheader("🍖 Registrazione Pezzi Carne")
-    with st.form("c_form_final"):
+    
+    # Forza i nomi delle colonne per evitare KeyError
+    if not df_c.empty:
+        df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
+        df_c["Qta"] = pd.to_numeric(df_c["Qta"], errors='coerce').fillna(0)
+    
+    with st.form("c_form_differenziale"):
         c_date, c_prod, c_qta, c_time = st.columns(4)
         f_d = c_date.selectbox("Turno", DATE_UFFICIALI)
         f_p = c_prod.selectbox("Tipo Carne", PRODOTTI)
-        f_q = c_qta.number_input("Pezzi", min_value=0, step=1)
+        f_q_totale = c_qta.number_input("Valore Totale Monitor", min_value=0, step=1)
         f_t = c_time.text_input("Ora Inserimento", value=get_it_time())
-        if st.form_submit_button("REGISTRA"):
-            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, f_t]}))
-            st.success("Inserito correttamente!"); time.sleep(1); st.rerun()
-    
-    if not df_c.empty:
-        df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
-        df_c["Qta"] = pd.to_numeric(df_c["Qta"])
         
+        if st.form_submit_button("REGISTRA"):
+            last_val = 0
+            if not df_c.empty:
+                # Trova l'ultimo valore per quel prodotto
+                last_val_rows = df_c[df_c["Prodotto"] == f_p]
+                if not last_val_rows.empty:
+                    last_val = last_val_rows.iloc[-1]["Qta"]
+            
+            pezzi_aggiunti = f_q_totale - last_val
+            
+            if pezzi_aggiunti < 0:
+                st.error(f"Errore: il monitor ({f_q_totale}) è più basso dell'ultimo dato ({int(last_val)}).")
+            else:
+                requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, int(pezzi_aggiunti), f_t]}))
+                st.success(f"✅ Registrato! Aggiunti {int(pezzi_aggiunti)} pezzi.")
+                time.sleep(1)
+                st.rerun()
+
+    if not df_c.empty:
         st.write("---")
         for d in df_c["Data"].unique():
             with st.expander(f"📊 Analisi e Modifiche Turno: {d}", expanded=True):
@@ -122,35 +140,21 @@ with tabs[1]:
                     df_sum = df_turno.groupby("Prodotto")["Qta"].sum().reset_index()
                     fig_t = px.bar(df_sum, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Totali")
                     fig_t.update_traces(textposition='outside')
-                    st.plotly_chart(fig_t, use_container_width=True, key=f"b_{d}")
+                    st.plotly_chart(fig_t, use_container_width=True, key=f"bar_v_{d}")
                 with col_g2:
                     fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", line_shape="spline", markers=True, title="Andamento")
-                    st.plotly_chart(fig_a, use_container_width=True, key=f"l_{d}")
+                    st.plotly_chart(fig_a, use_container_width=True, key=f"line_v_{d}")
                 
-                # FINESTRA MODIFICHE (Quella che mancava)
+                # FINESTRA MODIFICHE (Indentazione Corretta)
                 st.write("**📝 Lista Inserimenti (clicca Elimina per correggere)**")
                 for idx, row in df_turno.iterrows():
                     cm1, cm2, cm3, cm4 = st.columns([2, 2, 1, 1])
                     cm1.write(f"🕒 {row['Ora']}")
                     cm2.write(f"🍖 {row['Prodotto']}")
-                    cm3.write(f"🔢 {row['Qta']} pz")
-                    if cm4.button("🗑️", key=f"del_c_{idx}"):
-                        # Index reale nel foglio = index nel df + 2
+                    cm3.write(f"🔢 {int(row['Qta'])} pz")
+                    if cm4.button("🗑️", key=f"del_meat_{idx}"):
                         requests.get(f"{SCRIPT_URL}?sheet=Quantità Grigliate&deleteRow={idx+2}")
                         st.warning("Eliminato!"); time.sleep(1); st.rerun()
-
-        st.write("---")
-        st.subheader("📈 Totali Sagra (Tutto il periodo)")
-        c_fin1, c_fin2 = st.columns(2)
-        with c_fin1:
-            df_g_sum = df_c.groupby("Prodotto")["Qta"].sum().reset_index()
-            fig_g_b = px.bar(df_g_sum, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Pezzi Totali Sagra")
-            fig_g_b.update_traces(textposition='outside')
-            st.plotly_chart(fig_g_b, use_container_width=True)
-        with c_fin2:
-            df_day = df_c.groupby(["Data", "Prodotto"])["Qta"].sum().reset_index()
-            fig_day = px.area(df_day, x="Data", y="Qta", color="Prodotto", line_shape="spline", title="Andamento Globale Sagra")
-            st.plotly_chart(fig_day, use_container_width=True)
 
 # --- TAB GALLERIA, SISTEMA, INFO (INVARIATI) ---
 with tabs[2]:
