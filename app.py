@@ -94,71 +94,38 @@ with tabs[0]:
                 st.write(f"**PRESENTI:** {', '.join(pres)}")
             st.write("---")
 
-# --- TAB 2: MONITOR CARNE (LOGICA DIFFERENZIALE + FIX COLONNE) ---
+# --- TAB 2: MONITOR CARNE (CON FINESTRA MODIFICHE) ---
 with tabs[1]:
     st.subheader("🍖 Registrazione Pezzi Carne")
-    
-    # Messa in sicurezza delle colonne
-    if not df_c.empty:
-        # Forza i nomi delle colonne a prescindere da cosa arriva dal foglio
-        df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
-        df_c["Qta"] = pd.to_numeric(df_c["Qta"], errors='coerce').fillna(0)
-    
-    with st.form("c_form_differenziale"):
+    with st.form("c_form_final"):
         c_date, c_prod, c_qta, c_time = st.columns(4)
         f_d = c_date.selectbox("Turno", DATE_UFFICIALI)
         f_p = c_prod.selectbox("Tipo Carne", PRODOTTI)
-        f_q_totale = c_qta.number_input("Valore Totale Monitor", min_value=0, step=1)
+        f_q = c_qta.number_input("Pezzi", min_value=0, step=1)
         f_t = c_time.text_input("Ora Inserimento", value=get_it_time())
-        
         if st.form_submit_button("REGISTRA"):
-            # Calcolo della differenza (Sottrazione automatica)
-            last_val = 0
-            if not df_c.empty:
-                # Cerca l'ultimo valore inserito per quel prodotto specifico
-                last_val_rows = df_c[df_c["Prodotto"] == f_p]
-                if not last_val_rows.empty:
-                    last_val = last_val_rows.iloc[-1]["Qta"]
-            
-            pezzi_aggiunti = f_q_totale - last_val
-            
-            if pezzi_aggiunti < 0:
-                st.error(f"Attenzione: il monitor segna {f_q_totale}, ma l'ultimo dato era {int(last_val)}. Non posso sottrarre!")
-            else:
-                requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, int(pezzi_aggiunti), f_t]}))
-                st.success(f"✅ Registrato! Aggiunti {int(pezzi_aggiunti)} pezzi.")
-                time.sleep(1)
-                st.rerun()
+            requests.post(SCRIPT_URL, data=json.dumps({"sheet": "Quantità Grigliate", "data": [f_d, f_p, f_q, f_t]}))
+            st.success("Inserito correttamente!"); time.sleep(1); st.rerun()
     
-    # Visualizzazione Grafici
     if not df_c.empty:
+        df_c.columns = ["Data", "Prodotto", "Qta", "Ora"]
+        df_c["Qta"] = pd.to_numeric(df_c["Qta"])
+        
         st.write("---")
         for d in df_c["Data"].unique():
-            with st.expander(f"📊 Analisi Turno: {d}", expanded=True):
+            with st.expander(f"📊 Analisi e Modifiche Turno: {d}", expanded=True):
                 df_turno = df_c[df_c["Data"] == d]
                 
+                # Grafici
                 col_g1, col_g2 = st.columns(2)
                 with col_g1:
                     df_sum = df_turno.groupby("Prodotto")["Qta"].sum().reset_index()
-                    fig_t = px.bar(df_sum, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Totale Pezzi Messi")
+                    fig_t = px.bar(df_sum, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Totali")
                     fig_t.update_traces(textposition='outside')
                     st.plotly_chart(fig_t, use_container_width=True, key=f"b_{d}")
                 with col_g2:
-                    fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", line_shape="spline", markers=True, title="Andamento Inserimenti")
+                    fig_a = px.line(df_turno.sort_values("Ora"), x="Ora", y="Qta", color="Prodotto", line_shape="spline", markers=True, title="Andamento")
                     st.plotly_chart(fig_a, use_container_width=True, key=f"l_{d}")
-
-        st.write("---")
-        st.subheader("📈 Totali Sagra")
-        c_fin1, c_fin2 = st.columns(2)
-        with c_fin1:
-            # Qui usiamo df_c che ora ha sicuramente la colonna "Qta"
-            df_g_sum = df_c.groupby("Prodotto")["Qta"].sum().reset_index()
-            fig_g_b = px.bar(df_g_sum, x="Prodotto", y="Qta", color="Prodotto", text="Qta", title="Pezzi Totali Sagra")
-            st.plotly_chart(fig_g_b, use_container_width=True)
-        with c_fin2:
-            df_day = df_c.groupby(["Data", "Prodotto"])["Qta"].sum().reset_index()
-            fig_day = px.area(df_day, x="Data", y="Qta", color="Prodotto", line_shape="spline", title="Massa Critica Giornaliera")
-            st.plotly_chart(fig_day, use_container_width=True)
                 
                 # FINESTRA MODIFICHE (Quella che mancava)
                 st.write("**📝 Lista Inserimenti (clicca Elimina per correggere)**")
