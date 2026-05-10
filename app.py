@@ -135,26 +135,25 @@ with tabs[1]:
             dati_da_inviare = []
 
             for prodotto, valore_totale in inputs:
-                # Procediamo solo se l'utente ha effettivamente scritto qualcosa nel campo
                 if valore_totale > 0:
-                    somma_precedente = 0
+                    somma_turno_precedente = 0
                     if not df_c.empty:
-                        # CALCOLO IL TOTALE STORICO: Sommo tutti i pezzi fatti finora per quel prodotto
-                        df_prod = df_c[df_c["Prodotto"] == prodotto]
-                        somma_precedente = df_prod["Qta"].sum()
+                        # CALCOLO SOLO IL TOTALE DEL TURNO SELEZIONATO (es. "Domenica 10 maggio - Cena")
+                        df_turno_attuale = df_c[(df_c["Data"] == f_d) & (df_c["Prodotto"] == prodotto)]
+                        somma_turno_precedente = df_turno_attuale["Qta"].sum()
                     
-                    # La differenza è: Quello che vedo sul monitor - Tutto quello fatto finora
-                    diff = valore_totale - somma_precedente
+                    # La differenza è: Monitor attuale - Pezzi già inseriti OGGI nello stesso turno
+                    diff = valore_totale - somma_turno_precedente
                     
                     if diff < 0:
-                        errori.append(f"{prodotto} (Monitor {valore_totale} < Totale Sagra {int(somma_precedente)})")
-                    elif diff > 0: # Salviamo solo se c'è un incremento reale
+                        errori.append(f"{prodotto} (Monitor {valore_totale} < Già inseriti stasera {int(somma_turno_precedente)})")
+                    elif diff > 0:
                         dati_da_inviare.append({"sheet": "Quantità Grigliate", "data": [f_d, prodotto, int(diff), f_t]})
                 else:
                     continue
 
             if errori:
-                st.error(f"⚠️ {', '.join(errori)}. Controlla i numeri, forse il monitor segna meno del totale già grigliato ieri!")
+                st.error(f"⚠️ {', '.join(errori)}. Se vuoi ricominciare il conteggio da zero per questo turno, l'ultimo inserimento deve essere maggiore del precedente.")
             elif dati_da_inviare:
                 with st.spinner("Salvataggio in corso..."):
                     for payload in dati_da_inviare:
@@ -162,8 +161,6 @@ with tabs[1]:
                 st.success(f"✅ Registrati con successo: {len(dati_da_inviare)} prodotti!")
                 time.sleep(1)
                 st.rerun()
-            else:
-                st.warning("Nessun dato nuovo inserito (i valori sono uguali a quelli già salvati).")
 
     if not df_c.empty:
         st.write("---")
